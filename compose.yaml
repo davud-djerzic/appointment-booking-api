@@ -14,6 +14,8 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./AppointmentBooking.Api/Database/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./AppointmentBooking.Api/Database/002_seed.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
 
     healthcheck:
       test:
