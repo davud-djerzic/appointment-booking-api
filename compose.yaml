@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: appointment-booking-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./AppointmentBooking.Api/Database/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./AppointmentBooking.Api/Database/002_seed.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
