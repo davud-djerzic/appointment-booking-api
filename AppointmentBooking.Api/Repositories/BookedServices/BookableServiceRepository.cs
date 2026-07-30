@@ -262,9 +262,9 @@ namespace AppointmentBooking.Api.Repositories.Services
                         CASE
                             WHEN is_active = FALSE THEN NOW()
                             ELSE updated_at
-                        END
+                        END,
                     is_active = TRUE
-                WHERE id = @Id;
+                WHERE id = @Id
                 RETURNING
                     id,
                     name AS Name,

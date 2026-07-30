@@ -93,7 +93,7 @@ namespace AppointmentBooking.Api.Controllers
         [ProducesResponseType<ServiceResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
-        public async Task<ActionResult<ServiceResponse>> Update(long id, CancellationToken cancellationToken)
+        public async Task<ActionResult<ServiceResponse>> Activate(long id, CancellationToken cancellationToken)
         {
             ServiceResponse? service = await bookableService.ActivateAsync(id, cancellationToken);
 
