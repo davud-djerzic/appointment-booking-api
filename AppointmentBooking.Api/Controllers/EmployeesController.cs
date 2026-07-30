@@ -19,7 +19,7 @@ namespace AppointmentBooking.Api.Controllers
         {
             var createdEmployee = await employeeService.CreateAsync(request, cancellationToken);
 
-            return Created($"/api/employees/{createdEmployee.Id}", createdEmployee);
+            return CreatedAtAction(nameof(GetById), new { id = createdEmployee.Id}, createdEmployee);
         }
 
         [HttpGet("{id:long}")]
@@ -44,8 +44,8 @@ namespace AppointmentBooking.Api.Controllers
 
         [HttpDelete("{id:long:min(1)}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
         {
             var deactivated = await employeeService.DeactivateAsync(id, cancellationToken);

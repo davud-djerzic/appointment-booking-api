@@ -2,7 +2,7 @@
 {
     public sealed class PagedResponse<T>
     {
-        public required IReadOnlyCollection<T> items { get; init; }
+        public required IReadOnlyCollection<T> Items { get; init; }
 
         public int Page { get; init; }
 

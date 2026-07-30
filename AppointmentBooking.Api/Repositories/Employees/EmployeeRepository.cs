@@ -20,7 +20,7 @@ namespace AppointmentBooking.Api.Repositories.Employees
                     phone AS Phone,
                     is_active AS IsActive,
                     created_at AS CreatedAt,
-                    updated_at AS UpdatedAt
+                    updated_at AS UpdatedAt;
                 """;
 
             try
@@ -165,7 +165,7 @@ namespace AppointmentBooking.Api.Repositories.Employees
             };
         }
 
-        public async Task<Employee?> UpdateAsync(Employee employee, CancellationToken cancellationToken)
+        public async Task<Employee?> UpdateAsync(UpdateEmployeeData employee, CancellationToken cancellationToken)
         {
             const string sql = """
                 UPDATE employees
