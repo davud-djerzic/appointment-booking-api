@@ -19,6 +19,16 @@ namespace AppointmentBooking.Api.Exceptions
                         Detail = exception.Message,
                         Instance = httpContext.Request.Path
                     },
+
+                ServiceNameAlreadyExistsException =>
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Service already exists",
+                        Detail = exception.Message,
+                        Instance = httpContext.Request.Path
+                    },
+
                 _ => new ProblemDetails
                 {
                     Status = StatusCodes.Status500InternalServerError,

@@ -1,6 +1,8 @@
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Repositories;
 using AppointmentBooking.Api.Repositories.Employees;
+using AppointmentBooking.Api.Repositories.Services;
+using AppointmentBooking.Api.Services.BookedServices;
 using AppointmentBooking.Api.Services.Employees;
 using Npgsql;
 
@@ -24,6 +26,8 @@ builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
 builder.Services.AddScoped<IDatabaseHealthRepository, DatabaseHealthRepository>();
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+builder.Services.AddScoped<IBookableServiceRepository, BookableServiceRepository>();
+builder.Services.AddScoped<IBookableServiceService, BookableServiceService>();
 
 var app = builder.Build();
 

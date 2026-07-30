@@ -11,7 +11,7 @@ namespace AppointmentBooking.Api.Repositories.Employees
 
         Task<PagedResult<Employee>> GetAllAsync(string? search, bool? isActive, int page, int pageSize, CancellationToken cancellationToken);
 
-        Task<Employee?> UpdateAsync(Employee employee, CancellationToken cancellationToken);
+        Task<Employee?> UpdateAsync(UpdateEmployeeData employee, CancellationToken cancellationToken);
 
         Task<Employee?> ActivateAsync(long id, CancellationToken cancellationToken);
     }

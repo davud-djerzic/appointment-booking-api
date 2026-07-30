@@ -23,7 +23,7 @@ namespace AppointmentBooking.Api.Services.Employees
             return MapToResponse(createdEmployee);
         }
 
-        public async Task<EmployeeResponse> GetByIdAsync(long id, CancellationToken cancellationToken)
+        public async Task<EmployeeResponse?> GetByIdAsync(long id, CancellationToken cancellationToken)
         {
             var employee = await employeeRepository.GetByIdAsync(id, cancellationToken);
             
@@ -43,7 +43,7 @@ namespace AppointmentBooking.Api.Services.Employees
 
             return new PagedResponse<EmployeeResponse>
             {
-                items = employees,
+                Items = employees,
                 Page = query.Page,
                 PageSize = query.PageSize,
                 TotalCount = result.TotalCount
@@ -52,7 +52,7 @@ namespace AppointmentBooking.Api.Services.Employees
 
         public async Task<EmployeeResponse?> UpdateAsync(long id, UpdateEmployeeRequest request, CancellationToken cancellationToken)
         {
-            Employee employees = new Employee
+            UpdateEmployeeData employees = new UpdateEmployeeData
             {
                 Id = id,
                 FirstName = request.FirstName.Trim(),

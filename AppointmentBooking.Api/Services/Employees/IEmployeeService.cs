@@ -8,7 +8,7 @@ namespace AppointmentBooking.Api.Services.Employees
     {
         Task<EmployeeResponse> CreateAsync(CreateEmployeeRequest request, CancellationToken cancellationToken);
 
-        Task<EmployeeResponse> GetByIdAsync(long id, CancellationToken cancellationToken);
+        Task<EmployeeResponse?> GetByIdAsync(long id, CancellationToken cancellationToken);
 
         Task<bool> DeactivateAsync(long id, CancellationToken cancellationToken);
 
