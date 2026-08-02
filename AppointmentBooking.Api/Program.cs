@@ -1,9 +1,11 @@
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Repositories;
 using AppointmentBooking.Api.Repositories.Employees;
+using AppointmentBooking.Api.Repositories.EmployeeServices;
 using AppointmentBooking.Api.Repositories.Services;
 using AppointmentBooking.Api.Services.BookedServices;
 using AppointmentBooking.Api.Services.Employees;
+using AppointmentBooking.Api.Services.EmployeeServices;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +30,8 @@ builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IBookableServiceRepository, BookableServiceRepository>();
 builder.Services.AddScoped<IBookableServiceService, BookableServiceService>();
+builder.Services.AddScoped<IEmployeeServiceRepository, EmployeeServiceRepository>();
+builder.Services.AddScoped<IEmployeeServiceAssignmentService, EmployeeServiceAssignmentService>();
 
 var app = builder.Build();
 
