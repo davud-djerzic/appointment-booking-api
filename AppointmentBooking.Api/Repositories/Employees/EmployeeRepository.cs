@@ -65,7 +65,7 @@ namespace AppointmentBooking.Api.Repositories.Employees
 
         public async Task<bool> DeactivateAsync(long id, CancellationToken cancellationToken)
         {
-            const string sql = """
+            const string deactivateEmployeeSql = """
                     UPDATE employees 
                     SET 
                         updated_at =
@@ -74,19 +74,59 @@ namespace AppointmentBooking.Api.Repositories.Employees
                             ELSE updated_at
                         END,
                         is_active = FALSE
-                    WHERE id = @Id;
+                    WHERE id = @Id; 
                     """;
+
+            const string deactivateAssignmentsSql = """
+                UPDATE employee_services 
+                SET 
+                    updated_at =
+                    CASE 
+                        WHEN is_active = TRUE THEN NOW()
+                        ELSE updated_at
+                    END,
+                    is_active = FALSE
+                WHERE employee_id = @Id;
+                """;
 
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
-            var command = new CommandDefinition(
-                sql,
-                new { Id = id },
-                cancellationToken: cancellationToken);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-            var affectedRows = await connection.ExecuteAsync(command);
+            try
+            {
+                CommandDefinition deactivateEmployeeCommand = new(
+                    deactivateEmployeeSql,
+                    new { Id = id },
+                    transaction: transaction,
+                    cancellationToken: cancellationToken);
 
-            return affectedRows > 0;
+                int affectedRows = await connection.ExecuteAsync(deactivateEmployeeCommand);
+
+                if (affectedRows == 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return false;
+                }
+
+                CommandDefinition deactivateAssignmentsCommand = new(
+                    deactivateAssignmentsSql,
+                    new { Id = id },
+                    transaction: transaction,
+                    cancellationToken: cancellationToken);
+
+                await connection.ExecuteAsync(deactivateAssignmentsCommand);
+
+                await transaction.CommitAsync(cancellationToken);
+
+                return true;
+
+            } catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+
         }
 
         public async Task<PagedResult<Employee>> GetAllAsync(string? search, bool? isActive, int page, int pageSize, CancellationToken cancellationToken)

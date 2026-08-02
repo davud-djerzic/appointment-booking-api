@@ -1,0 +1,8 @@
+ALTER TABLE employee_services
+ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE employee_services
+ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE employee_services
+ADD COLUMN updated_at TIMESTAMPTZ;

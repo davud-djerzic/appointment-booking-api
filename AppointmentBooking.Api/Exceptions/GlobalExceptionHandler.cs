@@ -29,6 +29,14 @@ namespace AppointmentBooking.Api.Exceptions
                         Instance = httpContext.Request.Path
                     },
 
+                NotFoundException ex => new ProblemDetails
+                {
+                    Status = StatusCodes.Status404NotFound,
+                    Title = "Resource not found",
+                    Detail = exception.Message,
+                    Instance = httpContext.Request.Path
+                },
+
                 _ => new ProblemDetails
                 {
                     Status = StatusCodes.Status500InternalServerError,
