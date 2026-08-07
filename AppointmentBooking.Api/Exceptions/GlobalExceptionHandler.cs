@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Npgsql;
 
 namespace AppointmentBooking.Api.Exceptions
 {
@@ -11,6 +12,16 @@ namespace AppointmentBooking.Api.Exceptions
 
             var problemDeatils = exception switch
             {
+                NpgsqlException ex 
+                when(ex.InnerException is System.Net.Sockets.SocketException) => 
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status503ServiceUnavailable,
+                        Title = "Database unavailable",
+                        Detail = "The database is currently unavailable. Please try again later.",
+                        Instance = httpContext.Request.Path
+                    },
+
                 EmployeeEmailAlreadyExistsException =>
                     new ProblemDetails
                     {
@@ -36,6 +47,23 @@ namespace AppointmentBooking.Api.Exceptions
                     Detail = exception.Message,
                     Instance = httpContext.Request.Path
                 },
+
+                ConflictException => new ProblemDetails
+                {
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "Conflict",
+                    Detail = exception.Message,
+                    Instance = httpContext.Request.Path
+                },
+
+                AppointmentSlotUnavailableException =>
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Appointment slot unavailable",
+                        Detail = exception.Message,
+                        Instance = httpContext.Request.Path
+                    },
 
                 _ => new ProblemDetails
                 {
