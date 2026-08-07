@@ -1,18 +1,28 @@
+using AppointmentBooking.Api.BackgroundServices;
+using AppointmentBooking.Api.Configuration;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Repositories;
+using AppointmentBooking.Api.Repositories.Appointments;
 using AppointmentBooking.Api.Repositories.Employees;
 using AppointmentBooking.Api.Repositories.EmployeeServices;
 using AppointmentBooking.Api.Repositories.Services;
+using AppointmentBooking.Api.Services.Appointments;
 using AppointmentBooking.Api.Services.BookedServices;
 using AppointmentBooking.Api.Services.Employees;
 using AppointmentBooking.Api.Services.EmployeeServices;
 using Npgsql;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+});
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -25,13 +35,19 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
     NpgsqlDataSource.Create(connectionString));
 
-builder.Services.AddScoped<IDatabaseHealthRepository, DatabaseHealthRepository>();
+builder.Services.Configure<AppointmentOptions>(builder.Configuration.GetSection(AppointmentOptions.SectionName));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHostedService<ExpiredAppointmnetCleanupService>();
+builder.Services.AddHostedService<AutomaticAppointmentCompletionService>();
+
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IBookableServiceRepository, BookableServiceRepository>();
 builder.Services.AddScoped<IBookableServiceService, BookableServiceService>();
 builder.Services.AddScoped<IEmployeeServiceRepository, EmployeeServiceRepository>();
 builder.Services.AddScoped<IEmployeeServiceAssignmentService, EmployeeServiceAssignmentService>();
+builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 
 var app = builder.Build();
 

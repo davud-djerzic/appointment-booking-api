@@ -5,6 +5,6 @@
         Held,
         Scheduled,
         Completed,
-        Canceled
+        Cancelled
     }
 }
