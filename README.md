@@ -112,7 +112,7 @@ Make sure you have the following installed:
 
 ### Clone the Repository
 
-    git clone <your-repository-url>
+    git clone https://github.com/davud-djerzic/appointment-booking-api.git
     cd AppointmentBooking
 
 ### Configuration
