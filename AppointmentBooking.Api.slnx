@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="AppointmentBooking.Api.Tests/AppointmentBooking.Api.Tests.csproj" Id="e08fdc22-f0e2-4350-bfcb-0c30136728f3" />
   <Project Path="AppointmentBooking.Api/AppointmentBooking.Api.csproj" />
 </Solution>
