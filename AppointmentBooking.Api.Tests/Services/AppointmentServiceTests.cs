@@ -63,41 +63,11 @@ namespace AppointmentBooking.Api.Tests.Services
                 ServiceId: 1,
                 StartsAt: DateTimeOffset.UtcNow.AddHours(1));
 
-            employeeRepository
-            .Setup(x => x.GetByIdAsync(1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Employee
-            {
-                Id = 1,
-                FirstName = "Test",
-                LastName = "Employee",
-                Email = "test@example.com",
-                Phone = "1234567890",
-                IsActive = true,
-                CreatedAt = DateTimeOffset.UtcNow
-            });
+            SetupValidEmployee();
 
-            bookableServiceRepository
-            .Setup(x => x.GetByIdAsync(1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BookableService
-            {
-                Id = 1,
-                Name = "Test Service",
-                Description = "Test Service Description",
-                Price = 15m,
-                IsActive = true,
-                DurationMinutes = 30,
-                CreatedAt = DateTimeOffset.UtcNow
-            });
+            SetupValidService();
 
-            assignmentRepository.
-                Setup(x => x.GetAsync(1, 1, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new EmployeeServiceAssignemnt
-                {
-                    EmployeeId = 1,
-                    ServiceId = 1,
-                    IsActive = true,
-                    CreatedAt = DateTimeOffset.UtcNow
-                });
+            SetupValidAssignment();
 
             Guid holdToken = Guid.NewGuid();
 
@@ -173,6 +143,142 @@ namespace AppointmentBooking.Api.Tests.Services
         }
 
         [Fact]
+        public async Task CreateHoldAsync_ShouldThrowConflictException_WhenEmployeeIsInactive()
+        {
+            var request = new CreateAppointmentHoldRequest(
+                EmployeeId: 1,
+                ServiceId: 1,
+                StartsAt: DateTimeOffset.UtcNow.AddHours(1));
+
+            employeeRepository
+                .Setup(x => x.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Employee
+                {
+                    Id = 1,
+                    FirstName = "Test",
+                    LastName = "Test",
+                    Email = "test@example.com",
+                    Phone = "123456789",
+                    IsActive = false
+                });
+
+            Func<Task> act = () => appointmentService.CreateHoldAsync(request, CancellationToken.None);
+
+            await act.Should().ThrowAsync<ConflictException>()
+                .WithMessage("Employee with ID '1' is inactive.");
+        }
+
+        [Fact]
+        public async Task CreateHoldAsync_ShouldThrowNotFoundException_WhenServiceDoesNotExist()
+        {
+            CreateAppointmentHoldRequest request = new CreateAppointmentHoldRequest(
+               EmployeeId: 1,
+               ServiceId: 1,
+               StartsAt: DateTimeOffset.UtcNow.AddHours(1));
+
+            SetupValidEmployee();
+
+            bookableServiceRepository
+                .Setup(x => x.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((BookableService?)null);
+
+            Func<Task> act = () => appointmentService.CreateHoldAsync(request, CancellationToken.None);
+
+            await act.Should().ThrowAsync<NotFoundException>()
+                .WithMessage("Service with ID '1' was not found.");           
+        }
+
+        [Fact]
+        public async Task CreateHoldAsync_ShouldThrowConflictException_WhenServiceIsInactive()
+        {
+            CreateAppointmentHoldRequest request = new CreateAppointmentHoldRequest(
+               EmployeeId: 1,
+               ServiceId: 1,
+               StartsAt: DateTimeOffset.UtcNow.AddHours(1));
+
+            SetupValidEmployee();
+
+            bookableServiceRepository
+                .Setup(x => x.GetByIdAsync(1, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new BookableService
+                {
+                    Id = 1,
+                    Name = "Test Service",
+                    Description = "Test Service Description",
+                    Price = 15m,
+                    IsActive = false,
+                    DurationMinutes = 30,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+
+            Func<Task> act = () => appointmentService.CreateHoldAsync(request, CancellationToken.None);
+
+            await act.Should().ThrowAsync<ConflictException>()
+                .WithMessage("Service with ID '1' is inactive.");
+        }
+
+        [Fact]
+        public async Task CreateHoldAsync_ShouldThrowConflictException_WhenEmployeeDoesNotProvideService()
+        {
+            CreateAppointmentHoldRequest request = new CreateAppointmentHoldRequest(
+               EmployeeId: 1,
+               ServiceId: 1,
+               StartsAt: DateTimeOffset.UtcNow.AddHours(1));
+
+            SetupValidEmployee();
+
+            SetupValidService();
+
+            assignmentRepository
+                .Setup(x => x.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((EmployeeServiceAssignemnt?)null);
+
+            Func<Task> act = () => appointmentService.CreateHoldAsync(request, CancellationToken.None);
+
+            await act.Should().ThrowAsync<ConflictException>()
+                .WithMessage("Employee '1' does not provide service '1'.");
+
+            appointmentRepository.Verify(
+                x => x.CreateHoldAsync(
+                    It.IsAny<CreateAppointmentHoldData>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
+        public async Task CreateHoldAsync_ShouldThrowConflictException_WhenAssignmentIsInactive()
+        {
+            CreateAppointmentHoldRequest request = new CreateAppointmentHoldRequest(
+               EmployeeId: 1,
+               ServiceId: 1,
+               StartsAt: DateTimeOffset.UtcNow.AddHours(1));
+
+            SetupValidEmployee();
+
+            SetupValidService();
+
+            assignmentRepository
+                .Setup(x => x.GetAsync(1, 1, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new EmployeeServiceAssignemnt
+                {
+                    EmployeeId = 1,
+                    ServiceId = 1,
+                    IsActive = false
+                });
+
+            Func<Task> act = () => appointmentService.CreateHoldAsync(request, CancellationToken.None);
+
+            await act.Should().ThrowAsync<ConflictException>()
+                .WithMessage("Employee '1' does not provide service '1'.");
+
+            appointmentRepository.Verify(
+                x => x.CreateHoldAsync(
+                    It.IsAny<CreateAppointmentHoldData>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Fact]
         public async Task ConfirmAsync_ShouldThrowConflictException_WhenHoldExpired()
         {
             Guid holdToken = Guid.NewGuid();
@@ -216,7 +322,6 @@ namespace AppointmentBooking.Api.Tests.Services
                     It.IsAny<CancellationToken>()),
                 Times.Never);
         }
-
 
         [Fact]
         public async Task GetAllAsync_ShouldReturnPagedAppointments()
@@ -292,6 +397,56 @@ namespace AppointmentBooking.Api.Tests.Services
                         criteria.PageSize == 10),
                 It.IsAny<CancellationToken>()),
                 Times.Once);
+        }
+
+        private void SetupValidEmployee()
+        {
+            employeeRepository
+               .Setup(x => x.GetByIdAsync(
+                   1,
+                   It.IsAny<CancellationToken>()))
+               .ReturnsAsync(new Employee
+               {
+                   Id = 1,
+                   FirstName = "Test",
+                   LastName = "Employee",
+                   Email = "test@example.com",
+                   Phone = "123456789",
+                   IsActive = true
+               });
+        }
+
+        private void SetupValidService()
+        {
+            bookableServiceRepository
+                .Setup(x => x.GetByIdAsync(
+                    1,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new BookableService
+                {
+                    Id = 1,
+                    Name = "Test Service",
+                    Description = "Test Service Description",
+                    Price = 15m,
+                    IsActive = true,
+                    DurationMinutes = 30,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+        }
+
+        private void SetupValidAssignment()
+        {
+            assignmentRepository
+                .Setup(x => x.GetAsync(
+                    1,
+                    1,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new EmployeeServiceAssignemnt
+                {
+                    EmployeeId = 1,
+                    ServiceId = 1,
+                    IsActive = true
+                });
         }
     }
 }
