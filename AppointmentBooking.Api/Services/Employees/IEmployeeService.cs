@@ -10,7 +10,7 @@ namespace AppointmentBooking.Api.Services.Employees
 
         Task<EmployeeResponse?> GetByIdAsync(long id, CancellationToken cancellationToken);
 
-        Task<bool> DeactivateAsync(long id, CancellationToken cancellationToken);
+        Task DeactivateAsync(long id, CancellationToken cancellationToken);
 
         Task<PagedResponse<EmployeeResponse>> GetAllAsync(GetEmployeesQuery query, CancellationToken cancellationToken);
 

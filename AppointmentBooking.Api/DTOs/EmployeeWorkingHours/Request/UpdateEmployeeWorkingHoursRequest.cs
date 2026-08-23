@@ -1,7 +1,7 @@
 ﻿using AppointmentBooking.Api.Models;
 using System.ComponentModel.DataAnnotations;
 
-namespace AppointmentBooking.Api.DTOs.BookedServices.Request
+namespace AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request
 {
     public sealed class UpdateEmployeeWorkingHoursRequest : IValidatableObject
     {

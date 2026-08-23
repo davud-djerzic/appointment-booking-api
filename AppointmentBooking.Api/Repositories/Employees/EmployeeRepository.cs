@@ -63,7 +63,7 @@ namespace AppointmentBooking.Api.Repositories.Employees
             return await connection.QuerySingleOrDefaultAsync<Employee>(command);
         }
 
-        public async Task<bool> DeactivateAsync(long id, CancellationToken cancellationToken)
+        public async Task DeactivateAsync(long employeeId, CancellationToken cancellationToken)
         {
             const string deactivateEmployeeSql = """
                     UPDATE employees 
@@ -74,7 +74,7 @@ namespace AppointmentBooking.Api.Repositories.Employees
                             ELSE updated_at
                         END,
                         is_active = FALSE
-                    WHERE id = @Id; 
+                    WHERE id = @EmployeeId; 
                     """;
 
             const string deactivateAssignmentsSql = """
@@ -86,7 +86,12 @@ namespace AppointmentBooking.Api.Repositories.Employees
                         ELSE updated_at
                     END,
                     is_active = FALSE
-                WHERE employee_id = @Id;
+                WHERE employee_id = @EmployeeId;
+                """;
+
+            const string deleteWorkingHoursSql = """
+                DELETE FROM employee_working_hours
+                WHERE employee_id = @EmployeeId;
                 """;
 
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -97,31 +102,43 @@ namespace AppointmentBooking.Api.Repositories.Employees
             {
                 CommandDefinition deactivateEmployeeCommand = new(
                     deactivateEmployeeSql,
-                    new { Id = id },
+                    new
+                    {
+                        EmployeeId = employeeId
+                    },
                     transaction: transaction,
                     cancellationToken: cancellationToken);
 
-                int affectedRows = await connection.ExecuteAsync(deactivateEmployeeCommand);
-
-                if (affectedRows == 0)
-                {
-                    await transaction.RollbackAsync(cancellationToken);
-                    return false;
-                }
+                await connection.ExecuteAsync(
+                    deactivateEmployeeCommand);
 
                 CommandDefinition deactivateAssignmentsCommand = new(
                     deactivateAssignmentsSql,
-                    new { Id = id },
+                    new
+                    {
+                        EmployeeId = employeeId
+                    },
                     transaction: transaction,
                     cancellationToken: cancellationToken);
 
-                await connection.ExecuteAsync(deactivateAssignmentsCommand);
+                await connection.ExecuteAsync(
+                    deactivateAssignmentsCommand);
+
+                CommandDefinition deleteWorkingHoursCommand = new(
+                    deleteWorkingHoursSql,
+                    new
+                    {
+                        EmployeeId = employeeId
+                    },
+                    transaction: transaction,
+                    cancellationToken: cancellationToken);
+
+                await connection.ExecuteAsync(
+                    deleteWorkingHoursCommand);
 
                 await transaction.CommitAsync(cancellationToken);
-
-                return true;
-
-            } catch
+            }
+            catch
             {
                 await transaction.RollbackAsync(cancellationToken);
                 throw;

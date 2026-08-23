@@ -1,5 +1,4 @@
-﻿using AppointmentBooking.Api.DTOs.BookedServices.Request;
-using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
+﻿using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Response;
 using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;
 using Microsoft.AspNetCore.Mvc;
