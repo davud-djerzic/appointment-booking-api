@@ -1,7 +1,9 @@
 ﻿using AppointmentBooking.Api.DTOs.Common;
 using AppointmentBooking.Api.DTOs.Employees.Request;
 using AppointmentBooking.Api.DTOs.Employees.Response;
+using AppointmentBooking.Api.Models;
 using AppointmentBooking.Api.Services.Employees;
+using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AppointmentBooking.Api.Controllers
@@ -48,17 +50,7 @@ namespace AppointmentBooking.Api.Controllers
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
         {
-            var deactivated = await employeeService.DeactivateAsync(id, cancellationToken);
-
-            if (!deactivated) {
-                return NotFound(new ProblemDetails
-                {
-                    Status = StatusCodes.Status404NotFound,
-                    Title = "Employee not found",
-                    Detail = $"Employee with ID '{id}' was not found.",
-                    Instance = HttpContext.Request.Path
-                });
-            }
+            await employeeService.DeactivateAsync(id, cancellationToken);   
 
             return NoContent();
         }

@@ -5,13 +5,10 @@ namespace AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request
 {
     public sealed class CreateEmployeeWorkingHoursRequest : IValidatableObject
     {
-        [Required]
         public WeekDay DayOfWeek { get; init; }
 
-        [Required]
         public TimeOnly StartsAt { get; init; }
 
-        [Required]
         public TimeOnly EndsAt { get; init; }
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

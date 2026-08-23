@@ -1,5 +1,4 @@
-﻿using AppointmentBooking.Api.DTOs.BookedServices.Request;
-using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
+﻿using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Response;
 
 namespace AppointmentBooking.Api.Services.EmployeeWorkingHoursService

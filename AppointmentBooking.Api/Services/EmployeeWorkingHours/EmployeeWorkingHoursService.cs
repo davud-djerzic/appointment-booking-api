@@ -1,5 +1,4 @@
-﻿using AppointmentBooking.Api.DTOs.BookedServices.Request;
-using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
+﻿using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Response;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
@@ -46,7 +45,7 @@ namespace AppointmentBooking.Api.Services.EmployeeWorkingHoursService
         {
             EmployeeWorkingHours? employeeWorkingHours = await employeeWorkingHoursRepository.GetByIdAsync(employeeId, workingHoursId, cancellationToken);
 
-            if (employeeWorkingHours is null) throw new NotFoundException($"Working hours with ID '{workingHoursId}' were not found.");
+            if (employeeWorkingHours is null) throw new NotFoundException($"Working hours with ID '{workingHoursId}' were not found for employee '{employeeId}'.");
 
             return new EmployeeWorkingHoursResponse(
                 employeeWorkingHours.Id,
@@ -61,6 +60,7 @@ namespace AppointmentBooking.Api.Services.EmployeeWorkingHoursService
             Employee? employee = await employeeRepository.GetByIdAsync(employeeId, cancellationToken);
 
             if (employee is null) throw new NotFoundException($"Employee with ID '{employeeId}' was not found.");
+            if (!employee.IsActive) throw new ConflictException($"Employee with ID '{employeeId}' is inactive.");
 
             IReadOnlyCollection<EmployeeWorkingHours> workingHours = await employeeWorkingHoursRepository.GetByEmployeeIdAsync(employeeId, cancellationToken);
 

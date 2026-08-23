@@ -1,6 +1,7 @@
 ﻿using AppointmentBooking.Api.DTOs.Common;
 using AppointmentBooking.Api.DTOs.Employees.Request;
 using AppointmentBooking.Api.DTOs.Employees.Response;
+using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
 using AppointmentBooking.Api.Repositories.Employees;
 
@@ -30,9 +31,14 @@ namespace AppointmentBooking.Api.Services.Employees
             return employee is null ? null : MapToResponse(employee);
         }
 
-        public Task<bool> DeactivateAsync(long id, CancellationToken cancellationToken)
+        public async Task DeactivateAsync(long id, CancellationToken cancellationToken)
         {
-            return employeeRepository.DeactivateAsync(id, cancellationToken);
+            Employee? employee = await employeeRepository.GetByIdAsync(id, cancellationToken);
+            if (employee is null) throw new NotFoundException($"Employee with ID '{id}' was not found.");
+            if (!employee.IsActive) throw new ConflictException($"Employee with ID '{id}' is already inactive.");
+
+
+            await employeeRepository.DeactivateAsync(id, cancellationToken);
         }
 
         public async Task<PagedResponse<EmployeeResponse>> GetAllAsync(GetEmployeesQuery query, CancellationToken cancellationToken)
