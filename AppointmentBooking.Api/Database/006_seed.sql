@@ -1,31 +1,43 @@
 INSERT INTO user_accounts
 (
+    first_name,
+    last_name,
     email,
     password_hash,
     role
 )
 VALUES
 (
+    'Amina',
+    'Hadzic',
     'amina@example.com',
     'AQAAAAIAAYagAAAAEHXIUjgpyiideBy7kCYj6f3WrUgesm9RZMarAbeTKwTnNYmkwkvFhbhOYyX7lExnPw==',
     'employee'
 ),
 (
+    'Haris',
+    'Kovacevic',
     'haris@example.com',
     'AQAAAAIAAYagAAAAEHXIUjgpyiideBy7kCYj6f3WrUgesm9RZMarAbeTKwTnNYmkwkvFhbhOYyX7lExnPw==',
     'employee'
 ),
 (
+    'Lejla',
+    'Mehic',
     'lejla@example.com',
     'AQAAAAIAAYagAAAAEHXIUjgpyiideBy7kCYj6f3WrUgesm9RZMarAbeTKwTnNYmkwkvFhbhOYyX7lExnPw==',
     'employee'
 ),
 (
+    'Admin',
+    'User',
     'admin@example.com',
     'AQAAAAIAAYagAAAAEHXIUjgpyiideBy7kCYj6f3WrUgesm9RZMarAbeTKwTnNYmkwkvFhbhOYyX7lExnPw==',
     'admin'
 ),
 (
+    'John',
+    'Doe',
     'john.doe@example.com',
     'AQAAAAIAAYagAAAAEHXIUjgpyiideBy7kCYj6f3WrUgesm9RZMarAbeTKwTnNYmkwkvFhbhOYyX7lExnPw==',
     'customer'
@@ -35,14 +47,10 @@ VALUES
 INSERT INTO employees
 (
     user_account_id,
-    first_name,
-    last_name,
     phone
 )
 SELECT
     id,
-    'Amina',
-    'Hadzic',
     '+38761111111'
 FROM user_accounts
 WHERE email = 'amina@example.com';
@@ -51,14 +59,10 @@ WHERE email = 'amina@example.com';
 INSERT INTO employees
 (
     user_account_id,
-    first_name,
-    last_name,
     phone
 )
 SELECT
     id,
-    'Haris',
-    'Kovacevic',
     '+38762222222'
 FROM user_accounts
 WHERE email = 'haris@example.com';
@@ -67,14 +71,10 @@ WHERE email = 'haris@example.com';
 INSERT INTO employees
 (
     user_account_id,
-    first_name,
-    last_name,
     phone
 )
 SELECT
     id,
-    'Lejla',
-    'Mehic',
     '+38763333333'
 FROM user_accounts
 WHERE email = 'lejla@example.com';
@@ -83,14 +83,10 @@ WHERE email = 'lejla@example.com';
 INSERT INTO customers
 (
     user_account_id,
-    first_name,
-    last_name,
     phone
 )
 SELECT
     id,
-    'John',
-    'Doe',
     '+38764444444'
 FROM user_accounts
 WHERE email = 'john.doe@example.com';
