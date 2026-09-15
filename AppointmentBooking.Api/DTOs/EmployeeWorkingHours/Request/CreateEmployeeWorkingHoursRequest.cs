@@ -1,4 +1,4 @@
-﻿using AppointmentBooking.Api.Models;
+﻿using AppointmentBooking.Api.Models.Enums;
 using System.ComponentModel.DataAnnotations;
 
 namespace AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request

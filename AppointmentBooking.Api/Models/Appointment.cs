@@ -1,29 +1,26 @@
-﻿namespace AppointmentBooking.Api.Models
+﻿using AppointmentBooking.Api.Models.Enums;
+
+namespace AppointmentBooking.Api.Models
 {
     public class Appointment
     {
         public long Id { get; init; }
-        public long EmployeeId { get; init; }
+
+        public long BookingId { get; init; }
+
         public long ServiceId { get; init; }
-        public string? CustomerFirstName { get; init; }
 
-        public string? CustomerLastName { get; init; }
+        public string ServiceNameAtBooking { get; init; } = null!;
 
-        public string? CustomerEmail { get; init; }
+        public int DurationMinutesAtBooking { get; init; }
 
-        public string? CustomerPhone { get; init; }
+        public decimal PriceAtBooking { get; init; }
 
         public DateTimeOffset StartsAt { get; init; }
 
         public DateTimeOffset EndsAt { get; init; }
 
-        public required AppointmentStatus Status { get; init; }
-
-        public Guid? HoldToken { get; init; }
-
-        public DateTimeOffset? HoldExpiresAt { get; init; }
-
-        public string? Notes { get; init; }
+        public AppointmentStatus Status { get; init; }
 
         public DateTimeOffset CreatedAt { get; init; }
 

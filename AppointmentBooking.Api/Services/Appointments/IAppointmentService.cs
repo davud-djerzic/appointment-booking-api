@@ -8,7 +8,7 @@ namespace AppointmentBooking.Api.Services.Appointments
 {
     public interface IAppointmentService
     {
-        Task<AppointmentHoldResponse> CreateHoldAsync(CreateAppointmentHoldRequest request, CancellationToken cancellationToken);
+       /* Task<AppointmentHoldResponse> CreateHoldAsync(CreateAppointmentHoldRequest request, CancellationToken cancellationToken);
 
         Task<AppointmentResponse> ConfirmAsync(Guid holdToken, ConfirmHoldAppointment request, CancellationToken cancellationToken);
 
@@ -22,6 +22,6 @@ namespace AppointmentBooking.Api.Services.Appointments
 
         Task CompleteExpiredAppointmentsAsync(CancellationToken cancellationToken);
 
-        Task<PagedResponse<AppointmentListItem>> GetAllAsync(GetAppointmentsRequest request, CancellationToken cancellationToken);
+        Task<PagedResponse<AppointmentListItem>> GetAllAsync(GetAppointmentsRequest request, CancellationToken cancellationToken);*/
     }
 }

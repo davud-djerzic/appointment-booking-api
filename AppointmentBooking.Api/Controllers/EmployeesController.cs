@@ -4,6 +4,7 @@ using AppointmentBooking.Api.DTOs.Employees.Response;
 using AppointmentBooking.Api.Models;
 using AppointmentBooking.Api.Services.Employees;
 using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AppointmentBooking.Api.Controllers
@@ -12,47 +13,30 @@ namespace AppointmentBooking.Api.Controllers
     [Route("api/[controller]")]
     public sealed class EmployeesController(IEmployeeService employeeService) : ControllerBase
     {
+        [Authorize(Roles = "Admin")]
         [HttpPost]
-        [ProducesResponseType<EmployeeResponse>(StatusCodes.Status201Created)]
+        [ProducesResponseType<EmployeeResponse>( StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<EmployeeResponse>> Create(CreateEmployeeRequest request, CancellationToken cancellationToken)
         {
-            var createdEmployee = await employeeService.CreateAsync(request, cancellationToken);
+            EmployeeResponse createdEmployee = await employeeService.CreateAsync(request, cancellationToken);
 
-            return CreatedAtAction(nameof(GetById), new { id = createdEmployee.Id}, createdEmployee);
+            return CreatedAtAction(
+                nameof(GetById),
+                new { id = createdEmployee.Id },
+                createdEmployee);
         }
 
-        [HttpGet("{id:long}")]
+        [HttpGet("{id:long:min(1)}")]
         [ProducesResponseType<EmployeeResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<EmployeeResponse>> GetById(long id, CancellationToken cancellationToken)
         {
-            var employee = await employeeService.GetByIdAsync(id, cancellationToken);
-            if (employee is null)
-            {
-                return NotFound(new ProblemDetails
-                {
+            EmployeeResponse employee = await employeeService.GetByIdAsync(id, cancellationToken);
 
-                    Status = StatusCodes.Status404NotFound,
-                    Title = "Employee not found",
-                    Detail = $"Employee with ID '{id}' was not found.",
-                    Instance = HttpContext.Request.Path
-                });
-            }
             return Ok(employee);
-        }
-
-        [HttpDelete("{id:long:min(1)}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-        [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
-        {
-            await employeeService.DeactivateAsync(id, cancellationToken);   
-
-            return NoContent();
         }
 
         [HttpGet]
@@ -61,7 +45,8 @@ namespace AppointmentBooking.Api.Controllers
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<PagedResponse<EmployeeResponse>>> GetAll([FromQuery] GetEmployeesQuery query, CancellationToken cancellationToken)
         {
-            var result = await employeeService.GetAllAsync(query, cancellationToken);
+            PagedResponse<EmployeeResponse> result = await employeeService.GetAllAsync(query, cancellationToken);
+
             return Ok(result);
         }
 
@@ -73,35 +58,43 @@ namespace AppointmentBooking.Api.Controllers
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<EmployeeResponse>> Update(long id, UpdateEmployeeRequest request, CancellationToken cancellationToken)
         {
-            var updatedEmployee = await employeeService.UpdateAsync(id, request, cancellationToken);
-            if (updatedEmployee is null)
-            {
-                return NotFound(new ProblemDetails
-                {
-                    Status = StatusCodes.Status404NotFound,
-                    Title = "Employee not found",
-                    Detail = $"Employee with ID '{id}' was not found.",
-                    Instance = HttpContext.Request.Path
-                });
-            }
+            EmployeeResponse updatedEmployee =await employeeService.UpdateAsync(id, request, cancellationToken);
+
             return Ok(updatedEmployee);
+        }
+
+        [HttpDelete("{id:long:min(1)}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken)
+        {
+            await employeeService.DeactivateAsync(id, cancellationToken);
+
+            return NoContent();
         }
 
         [HttpPost("{id:long:min(1)}/activate")]
         [ProducesResponseType<EmployeeResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ProblemDetails>( StatusCodes.Status409Conflict)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<EmployeeResponse>> Activate(long id, CancellationToken cancellationToken)
         {
-            EmployeeResponse? employee = await employeeService.ActivateAsync(id, cancellationToken);
+            EmployeeResponse employee =await employeeService.ActivateAsync(id, cancellationToken);
 
-            if (employee is null) return NotFound(new ProblemDetails
-            {
-                Status = StatusCodes.Status404NotFound,
-                Title = "Employee not found",
-                Detail = $"Employee with ID '{id}' was not found.",
-                Instance = HttpContext.Request.Path
-            });
+            return Ok(employee);
+        }
+
+        [Authorize(Roles = "Employee")]
+        [HttpGet("me")]
+        [ProducesResponseType<EmployeeResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<EmployeeResponse>> GetMyProfile(CancellationToken cancellationToken)
+        {
+            EmployeeResponse employee = await employeeService.GetMyProfileAsync(cancellationToken);
 
             return Ok(employee);
         }

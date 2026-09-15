@@ -11,7 +11,7 @@ namespace AppointmentBooking.Api.Controllers
     [Route("api/[controller]")]
     public sealed class AppointmentsController(IAppointmentService appointmentService) : ControllerBase
     {
-        [HttpPost("hold")]
+        /*[HttpPost("hold")]
         [ProducesResponseType<AppointmentHoldResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -76,6 +76,6 @@ namespace AppointmentBooking.Api.Controllers
         {
             PagedResponse<AppointmentListItem> response = await appointmentService.GetAllAsync(request, cancellationToken);
             return Ok(response);
-        }
+        }*/
     }
 }

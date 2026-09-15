@@ -1,5 +1,5 @@
 ﻿using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
-using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using FluentAssertions;
 using System;
 using System.Collections.Generic;

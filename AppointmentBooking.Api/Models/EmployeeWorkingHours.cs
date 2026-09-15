@@ -1,4 +1,6 @@
-﻿namespace AppointmentBooking.Api.Models
+﻿using AppointmentBooking.Api.Models.Enums;
+
+namespace AppointmentBooking.Api.Models
 {
     public sealed class EmployeeWorkingHours
     {

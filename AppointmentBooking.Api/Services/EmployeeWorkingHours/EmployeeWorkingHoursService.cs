@@ -2,6 +2,7 @@
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Response;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using AppointmentBooking.Api.Repositories.Employees;
 using AppointmentBooking.Api.Repositories.EmployeeWorkingHoursRepository;
 using Dapper;
@@ -122,6 +123,44 @@ namespace AppointmentBooking.Api.Services.EmployeeWorkingHoursService
             
 
             await employeeWorkingHoursRepository.DeleteAsync(employeeId, workingHoursId, cancellationToken);
+        }
+
+        public async Task<bool> IsWithinWorkingHoursAsync(long employeeId, DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken cancellationToken)
+        {
+            DateTime localStartsAt = TimeZoneInfo.ConvertTime(startsAt, TimeZoneInfo.Local).DateTime;
+
+            DateTime localEndsAt = TimeZoneInfo.ConvertTime(endsAt, TimeZoneInfo.Local).DateTime;
+
+            if (localStartsAt.Date != localEndsAt.Date) return false;
+
+            IReadOnlyCollection<EmployeeWorkingHours> workingHours = await employeeWorkingHoursRepository.GetByEmployeeIdAsync(employeeId, cancellationToken);
+
+            TimeOnly bookingStartsAt = TimeOnly.FromDateTime(localStartsAt);
+
+            TimeOnly bookingEndsAt = TimeOnly.FromDateTime(localEndsAt);
+
+            WeekDay dayOfWeek = GetWeekDay(localStartsAt.DayOfWeek);
+
+            return workingHours.Any(workingHour =>
+                workingHour.DayOfWeek == dayOfWeek &&
+                workingHour.StartsAt <= bookingStartsAt &&
+                workingHour.EndsAt >= bookingEndsAt);
+
+        }
+
+        private static WeekDay GetWeekDay(DayOfWeek dayOfWeek)
+        {
+            return dayOfWeek switch
+            {
+                DayOfWeek.Monday => WeekDay.Monday,
+                DayOfWeek.Tuesday => WeekDay.Tuesday,
+                DayOfWeek.Wednesday => WeekDay.Wednesday,
+                DayOfWeek.Thursday => WeekDay.Thursday,
+                DayOfWeek.Friday => WeekDay.Friday,
+                DayOfWeek.Saturday => WeekDay.Saturday,
+                DayOfWeek.Sunday => WeekDay.Sunday,
+                _ => throw new ArgumentOutOfRangeException(nameof(dayOfWeek))
+            };
         }
     }
 }

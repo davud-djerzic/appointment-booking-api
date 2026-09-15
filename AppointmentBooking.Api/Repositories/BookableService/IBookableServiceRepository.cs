@@ -16,5 +16,7 @@ namespace AppointmentBooking.Api.Repositories.Services
         Task<BookableService?> UpdateAsync(UpdateServiceData service, CancellationToken cancellationToken);
 
         Task<BookableService?> ActivateAsync(long id, CancellationToken cancellationToken);
+
+        Task<IReadOnlyCollection<BookableService>> GetByIdsAsync(IReadOnlyCollection<long> ids, CancellationToken cancellationToken);
     }
 }

@@ -1,4 +1,7 @@
 <Solution>
-  <Project Path="AppointmentBooking.Api.Tests/AppointmentBooking.Api.Tests.csproj" Id="e08fdc22-f0e2-4350-bfcb-0c30136728f3" />
+  <Project Path="../../Test/PasswordHashGenerator/PasswordHashGenerator.csproj" Id="07fe918b-f2ec-47ce-8cbd-530fbe4bebae" />
+  <Project Path="AppointmentBooking.Api.Tests/AppointmentBooking.Api.Tests.csproj" Id="e08fdc22-f0e2-4350-bfcb-0c30136728f3">
+    <Build Solution="Debug|*" Project="false" />
+  </Project>
   <Project Path="AppointmentBooking.Api/AppointmentBooking.Api.csproj" />
 </Solution>

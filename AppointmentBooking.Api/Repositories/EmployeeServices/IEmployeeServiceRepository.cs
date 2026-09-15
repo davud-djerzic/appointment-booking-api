@@ -14,5 +14,7 @@ namespace AppointmentBooking.Api.Repositories.EmployeeServices
         Task<IEnumerable<ServiceEmployeeResponse>> GetServiceEmployeesAsync(long serviceId, CancellationToken cancellationToken);
 
         Task<EmployeeServiceAssignemnt> GetServiceEmployeesAssignmentAsync(long employeeId, long serviceId, CancellationToken cancellationToken);
+
+        Task<IReadOnlyCollection<EmployeeServiceAssignemnt>> GetByEmployeeAndServiceIdsAsync(long employeeId, IReadOnlyCollection<long> serviceIds, CancellationToken cancellationToken);
     }
 }

@@ -1,4 +1,4 @@
-﻿using AppointmentBooking.Api.Models;
+﻿using AppointmentBooking.Api.Models.Enums;
 
 namespace AppointmentBooking.Api.Repositories.Appointments
 {
@@ -6,23 +6,27 @@ namespace AppointmentBooking.Api.Repositories.Appointments
     {
         public long Id { get; init; }
 
+        public long BookingId { get; init; }
+
+        public long CustomerId { get; init; }
+
+        public string CustomerFirstName { get; init; } = null!;
+
+        public string CustomerLastName { get; init; } = null!;
+
+        public string CustomerEmail { get; init; } = null!;
+
+        public string CustomerPhone { get; init; } = null!;
+
         public long EmployeeId { get; init; }
 
-        public string EmployeeFirstName { get; init; } = default!;
+        public string EmployeeFirstName { get; init; } = null!;
 
-        public string EmployeeLastName { get; init; } = default!;
+        public string EmployeeLastName { get; init; } = null!;
 
         public long ServiceId { get; init; }
 
-        public string ServiceName { get; init; } = default!;
-
-        public string? CustomerFirstName { get; init; }
-
-        public string? CustomerLastName { get; init; }
-
-        public string? CustomerEmail { get; init; }
-
-        public string? CustomerPhone { get; init; }
+        public string ServiceName { get; init; } = null!;
 
         public DateTimeOffset StartsAt { get; init; }
 
@@ -34,5 +38,8 @@ namespace AppointmentBooking.Api.Repositories.Appointments
 
         public string EmployeeFullName =>
             $"{EmployeeFirstName} {EmployeeLastName}";
+
+        public string CustomerFullName =>
+            $"{CustomerFirstName} {CustomerLastName}";
     }
 }

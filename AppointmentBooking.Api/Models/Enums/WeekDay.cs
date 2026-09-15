@@ -1,4 +1,4 @@
-﻿namespace AppointmentBooking.Api.Models
+﻿namespace AppointmentBooking.Api.Models.Enums
 {
     public enum WeekDay
     {

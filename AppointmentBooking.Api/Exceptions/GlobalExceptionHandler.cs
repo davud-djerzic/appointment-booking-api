@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using System.ComponentModel.DataAnnotations;
 
 namespace AppointmentBooking.Api.Exceptions
 {
@@ -40,11 +41,27 @@ namespace AppointmentBooking.Api.Exceptions
                         Instance = httpContext.Request.Path
                     },
 
+                UnauthorizedException => new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Unauthorized",
+                    Detail = exception.Message,
+                    Instance = httpContext.Request.Path
+                },
+
                 NotFoundException ex => new ProblemDetails
                 {
                     Status = StatusCodes.Status404NotFound,
                     Title = "Resource not found",
                     Detail = exception.Message,
+                    Instance = httpContext.Request.Path
+                },
+
+                ValidationException ex => new ProblemDetails
+                {
+                    Status = StatusCodes.Status400BadRequest,
+                    Title = "Validation failed",
+                    Detail = ex.Message,
                     Instance = httpContext.Request.Path
                 },
 

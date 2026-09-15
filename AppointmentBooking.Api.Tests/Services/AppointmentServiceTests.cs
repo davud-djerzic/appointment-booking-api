@@ -4,6 +4,7 @@ using AppointmentBooking.Api.DTOs.Appointments.Response;
 using AppointmentBooking.Api.DTOs.Common;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using AppointmentBooking.Api.Repositories.Appointments;
 using AppointmentBooking.Api.Repositories.Employees;
 using AppointmentBooking.Api.Repositories.EmployeeServices;
@@ -30,7 +31,7 @@ namespace AppointmentBooking.Api.Tests.Services
 
         private readonly Mock<IEmployeeServiceRepository> assignmentRepository = new();
 
-        private readonly Mock<IOptions<AppointmentOptions>> options = new();
+        private readonly Mock<IOptions<BookingOptions>> options = new();
 
         private readonly Mock<ILogger<AppointmentService>> logger = new();
 
@@ -40,7 +41,7 @@ namespace AppointmentBooking.Api.Tests.Services
 
         public AppointmentServiceTests()
         {
-            options.Setup(x => x.Value).Returns(new AppointmentOptions
+            options.Setup(x => x.Value).Returns(new BookingOptions
             {
                 HoldDurationInMinutes = 5
             });

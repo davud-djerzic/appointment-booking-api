@@ -2,6 +2,7 @@
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Response;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using AppointmentBooking.Api.Repositories.Employees;
 using AppointmentBooking.Api.Repositories.EmployeeWorkingHoursRepository;
 using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;

@@ -23,5 +23,9 @@ namespace AppointmentBooking.Api.DTOs.Employees.Request
             MinimumLength = 6,
             ErrorMessage = "Phone must contain between 6 and 30 characters.")]
         public required string Phone { get; init; }
+
+        [Required(ErrorMessage = "Password is required.")]
+        [StringLength(100, MinimumLength = 8, ErrorMessage = "Password must contain between 8 and 100 characters.")]
+        public required string Password { get; init; }
     }
 }

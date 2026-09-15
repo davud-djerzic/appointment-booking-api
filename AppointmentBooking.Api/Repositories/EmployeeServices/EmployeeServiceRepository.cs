@@ -141,21 +141,23 @@ namespace AppointmentBooking.Api.Repositories.EmployeeServices
 
         public async Task<IEnumerable<ServiceEmployeeResponse>> GetServiceEmployeesAsync(long serviceId, CancellationToken cancellationToken)
         {
-
             const string sql = """
                 SELECT 
                     e.id AS Id,
-                    e.first_name AS FirstName,
-                    e.last_name AS LastName,
-                    e.email AS Email
+                    ua.first_name AS FirstName,
+                    ua.last_name AS LastName,
+                    ua.email AS Email
                 FROM employee_services AS es
                 INNER JOIN employees e
                     ON e.id = es.employee_id
+                INNER JOIN user_accounts ua
+                    ON ua.id = e.user_account_id
                 WHERE 
                     es.service_id = @ServiceId 
                     AND es.is_active = TRUE
                     AND e.is_active = TRUE
-                ORDER BY e.first_name, e.last_name;
+                    AND ua.is_active = TRUE
+                ORDER BY ua.first_name, ua.last_name;
                 """;
 
             await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -185,6 +187,41 @@ namespace AppointmentBooking.Api.Repositories.EmployeeServices
                 sql,
                 new { EmployeeId = employeeId, ServiceId = serviceId },
                 cancellationToken: cancellationToken));
+        }
+
+        public async Task<IReadOnlyCollection<EmployeeServiceAssignemnt>> GetByEmployeeAndServiceIdsAsync(long employeeId, IReadOnlyCollection<long> serviceIds, CancellationToken cancellationToken)
+        {
+            if (serviceIds.Count == 0)
+            {
+                return [];
+            }
+
+            const string sql = """
+                SELECT
+                    employee_id AS EmployeeId,
+                    service_id AS ServiceId,
+                    is_active AS IsActive,
+                    created_at AS CreatedAt,
+                    updated_at AS UpdatedAt
+                FROM employee_services
+                WHERE employee_id = @EmployeeId
+                  AND service_id = ANY(@ServiceIds);
+                """;
+
+            await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
+
+            IEnumerable<EmployeeServiceAssignemnt> assignments =
+                await connection.QueryAsync<EmployeeServiceAssignemnt>(
+                    new CommandDefinition(
+                        sql,
+                        new
+                        {
+                            EmployeeId = employeeId,
+                            ServiceIds = serviceIds.ToArray()
+                        },
+                        cancellationToken: cancellationToken));
+
+            return assignments.ToArray();
         }
 
     }

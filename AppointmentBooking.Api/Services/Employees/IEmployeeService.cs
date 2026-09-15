@@ -8,14 +8,16 @@ namespace AppointmentBooking.Api.Services.Employees
     {
         Task<EmployeeResponse> CreateAsync(CreateEmployeeRequest request, CancellationToken cancellationToken);
 
-        Task<EmployeeResponse?> GetByIdAsync(long id, CancellationToken cancellationToken);
+        Task<EmployeeResponse> GetByIdAsync(long id, CancellationToken cancellationToken);
 
         Task DeactivateAsync(long id, CancellationToken cancellationToken);
 
         Task<PagedResponse<EmployeeResponse>> GetAllAsync(GetEmployeesQuery query, CancellationToken cancellationToken);
 
-        Task<EmployeeResponse?> UpdateAsync(long id, UpdateEmployeeRequest request, CancellationToken cancellationToken);
+        Task<EmployeeResponse> UpdateAsync(long id, UpdateEmployeeRequest request, CancellationToken cancellationToken);
 
-        Task<EmployeeResponse?> ActivateAsync(long id, CancellationToken cancellationToken);
+        Task<EmployeeResponse> ActivateAsync(long id, CancellationToken cancellationToken);
+
+        Task<EmployeeResponse> GetMyProfileAsync(CancellationToken cancellationToken);
     }
 }

@@ -1,8 +1,8 @@
 ﻿namespace AppointmentBooking.Api.Configuration
 {
-    public sealed class AppointmentOptions
+    public sealed class BookingOptions
     {
-        public const string SectionName = "Appointments";
+        public const string SectionName = "Bookings";
 
         public int HoldDurationInMinutes { get; init; }
 
@@ -12,5 +12,6 @@
 
         public bool EnableAutomaticCompletion { get; init; }
 
+        public int AvailabilitySlotIntervalMinutes { get; init; }
     }
 }

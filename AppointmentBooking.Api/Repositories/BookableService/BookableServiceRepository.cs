@@ -324,5 +324,40 @@ namespace AppointmentBooking.Api.Repositories.Services
             return await connection.QuerySingleOrDefaultAsync<BookableService>(command);
         }
 
+        public async Task<IReadOnlyCollection<BookableService>> GetByIdsAsync(IReadOnlyCollection<long> ids, CancellationToken cancellationToken)
+        {
+            if (ids.Count == 0)
+            {
+                return [];
+            }
+
+            const string sql = """
+                SELECT
+                    id,
+                    name AS Name,
+                    description AS Description,
+                    duration_minutes AS DurationMinutes,
+                    price AS Price,
+                    is_active AS IsActive,
+                    created_at AS CreatedAt,
+                    updated_at AS UpdatedAt
+                FROM services
+                WHERE id = ANY(@ServiceIds);
+                """;
+
+            await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
+
+            IEnumerable<BookableService> services =
+                await connection.QueryAsync<BookableService>(
+                    new CommandDefinition(
+                        sql,
+                        new
+                        {
+                            ServiceIds = ids.ToArray()
+                        },
+                        cancellationToken: cancellationToken));
+
+            return services.ToArray();
+        }
     }
 }

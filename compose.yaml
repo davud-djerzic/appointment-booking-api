@@ -14,8 +14,16 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql
+
       - ./AppointmentBooking.Api/Database/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
-      - ./AppointmentBooking.Api/Database/002_seed.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
+      - ./AppointmentBooking.Api/Database/002_employee_services_status.sql:/docker-entrypoint-initdb.d/002_employee_services_status.sql:ro
+      - ./AppointmentBooking.Api/Database/003_employee_working_hours.sql:/docker-entrypoint-initdb.d/003_employee_working_hours.sql:ro
+      - ./AppointmentBooking.Api/Database/004_bookings_and_appointments.sql:/docker-entrypoint-initdb.d/004_bookings_and_appointments.sql:ro
+      - ./AppointmentBooking.Api/Database/005_user_refresh_tokens.sql:/docker-entrypoint-initdb.d/005_user_refresh_tokens.sql:ro
+      - ./AppointmentBooking.Api/Database/006_seed.sql:/docker-entrypoint-initdb.d/006_seed.sql:ro
+      - ./AppointmentBooking.Api/Database/007_add_refresh_token_family.sql:/docker-entrypoint-initdb.d/007_add_refresh_token_family.sql:ro
+      - ./AppointmentBooking.Api/Database/008_add_appointment_service_snapshot.sql:/docker-entrypoint-initdb.d/008_add_appointment_service_snapshot.sql:ro
+      - ./AppointmentBooking.Api/Database/009_add_completion_source_to_booking.sql:/docker-entrypoint-initdb.d/009_add_completion_source_to_booking.sql:ro
 
     healthcheck:
       test:
@@ -41,7 +49,8 @@ services:
         Database=${POSTGRES_DB};
         Username=${POSTGRES_USER};
         Password=${POSTGRES_PASSWORD}
-
+	
+       Jwt__SecretKey: ${JWT_SECRET_KEY}
 
     ports:
       - "8080:8080"
@@ -51,6 +60,13 @@ services:
         condition: service_healthy
 
     restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: appointment-booking-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
 
 volumes:
   postgres_data:

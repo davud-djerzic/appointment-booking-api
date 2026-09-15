@@ -1,20 +1,16 @@
-﻿using AppointmentBooking.Api.Models;
+﻿using AppointmentBooking.Api.Models.Enums;
 
 namespace AppointmentBooking.Api.DTOs.Appointments.Response
 {
     public sealed record AppointmentResponse(
         long Id,
-        long EmployeeId,
+        long BookingId,
         long ServiceId,
-        string CustomerFirstName,
-        string CustomerLastName,
-        string? CustomerEmail,
-        string? CustomerPhone,
+        string ServiceName,
+        int DurationMinutes,
+        decimal Price,
         DateTimeOffset StartsAt,
         DateTimeOffset EndsAt,
-        AppointmentStatus Status,
-        string? Notes,
-        DateTimeOffset CreatedAt,
-        DateTimeOffset? UpdatedAt
-   );
+        AppointmentStatus Status);
+    
 }

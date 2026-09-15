@@ -7,58 +7,143 @@ namespace AppointmentBooking.Api.Repositories.Employees
 {
     public sealed class EmployeeRepository(NpgsqlDataSource dataSource) : IEmployeeRepository
     {
-        public async Task<Employee> CreateAsync(Employee employee, CancellationToken cancellationToken)
+        public async Task<Employee> CreateEmployeeAccountAsync(UserAccount userAccount, string phone, CancellationToken cancellationToken)
         {
-            const string sql = """
-                INSERT INTO employees (first_name, last_name, email, phone)
-                VALUES (@FirstName, @LastName, @Email, @Phone)
-                RETURNING 
+            const string createUserAccountSql = """
+                INSERT INTO user_accounts
+                (
+                    first_name,
+                    last_name,
+                    email,
+                    password_hash,
+                    role,
+                    is_active
+                )
+                VALUES
+                (
+                    @FirstName,
+                    @LastName,
+                    @Email,
+                    @PasswordHash,
+                    @Role,
+                    @IsActive
+                )
+                RETURNING
                     id,
                     first_name AS FirstName,
                     last_name AS LastName,
-                    email AS Email,
+                    email,
+                    password_hash AS PasswordHash,
+                    role,
+                    is_active AS IsActive,
+                    created_at AS CreatedAt,
+                    updated_at AS UpdatedAt;
+                """;
+
+            const string createEmployeeSql = """
+                INSERT INTO employees
+                (
+                    user_account_id,
+                    phone
+                )
+                VALUES
+                (
+                    @UserAccountId,
+                    @Phone
+                )
+                RETURNING
+                    id,
+                    user_account_id AS UserAccountId,
                     phone AS Phone,
                     is_active AS IsActive,
                     created_at AS CreatedAt,
                     updated_at AS UpdatedAt;
                 """;
 
+            await using NpgsqlConnection connection =
+               await dataSource.OpenConnectionAsync(cancellationToken);
+
+            await using NpgsqlTransaction transaction =
+                await connection.BeginTransactionAsync(cancellationToken);
+
+
             try
             {
-                await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+                UserAccount createdUserAccount =
+                    await connection.QuerySingleAsync<UserAccount>(
+                        new CommandDefinition(
+                            createUserAccountSql,
+                            new
+                            {
+                                userAccount.FirstName,
+                                userAccount.LastName,
+                                userAccount.Email,
+                                userAccount.PasswordHash,
+                                Role = userAccount.Role
+                                    .ToString()
+                                    .ToLowerInvariant(),
+                                userAccount.IsActive
+                            },
+                            transaction: transaction,
+                            cancellationToken: cancellationToken));
 
-                var command = new CommandDefinition(sql, employee, cancellationToken: cancellationToken);
+                Employee createdEmployee =
+                    await connection.QuerySingleAsync<Employee>(
+                        new CommandDefinition(
+                            createEmployeeSql,
+                            new
+                            {
+                                UserAccountId = createdUserAccount.Id,
+                                Phone = phone
+                            },
+                            transaction: transaction,
+                            cancellationToken: cancellationToken));
 
-                return await connection.QuerySingleAsync<Employee>(command);
+                await transaction.CommitAsync(cancellationToken);
+
+                return createdEmployee;
             }
-            catch (PostgresException exception)
-                when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+            catch (PostgresException ex)
+                when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                throw new EmployeeEmailAlreadyExistsException(employee.Email, exception);
+                await transaction.RollbackAsync(cancellationToken);
+
+                if (ex.ConstraintName == "uq_user_accounts_email")
+                {
+                    throw new ConflictException(
+                        "An account with this email already exists.");
+                }
+
+                throw;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
             }
         }
 
         public async Task<Employee?> GetByIdAsync(long id, CancellationToken cancellationToken)
         {
             const string sql = """
-                    SELECT
-                        id,
-                        first_name AS FirstName,
-                        last_name AS LastName,
-                        email AS Email,
-                        phone AS Phone,
-                        is_active AS IsActive,
-                        created_at AS CreatedAt,
-                        updated_at AS UpdatedAt
-                    FROM employees
-                    WHERE id = @Id;
-                    """;
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+                SELECT
+                    id,
+                    user_account_id AS UserAccountId,
+                    phone AS Phone,
+                    is_active AS IsActive,
+                    created_at AS CreatedAt,
+                    updated_at AS UpdatedAt
+                FROM employees
+                WHERE id = @Id;
+                """;
 
-            var command = new CommandDefinition(
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
+
+            CommandDefinition command = new(
                 sql,
                 new { Id = id },
-                cancellationToken : cancellationToken);
+                cancellationToken: cancellationToken);
 
             return await connection.QuerySingleOrDefaultAsync<Employee>(command);
         }
@@ -66,25 +151,42 @@ namespace AppointmentBooking.Api.Repositories.Employees
         public async Task DeactivateAsync(long employeeId, CancellationToken cancellationToken)
         {
             const string deactivateEmployeeSql = """
-                    UPDATE employees 
-                    SET 
-                        updated_at =
-                        CASE 
+                UPDATE employees
+                SET
+                    updated_at =
+                        CASE
                             WHEN is_active = TRUE THEN NOW()
                             ELSE updated_at
                         END,
-                        is_active = FALSE
-                    WHERE id = @EmployeeId; 
-                    """;
+                    is_active = FALSE
+                WHERE id = @EmployeeId;
+                """;
+
+            const string deactivateUserAccountSql = """
+                UPDATE user_accounts
+                SET
+                    updated_at =
+                        CASE
+                            WHEN is_active = TRUE THEN NOW()
+                            ELSE updated_at
+                        END,
+                    is_active = FALSE
+                WHERE id =
+                (
+                    SELECT user_account_id
+                    FROM employees
+                    WHERE id = @EmployeeId
+                );
+                """;
 
             const string deactivateAssignmentsSql = """
-                UPDATE employee_services 
-                SET 
+                UPDATE employee_services
+                SET
                     updated_at =
-                    CASE 
-                        WHEN is_active = TRUE THEN NOW()
-                        ELSE updated_at
-                    END,
+                        CASE
+                            WHEN is_active = TRUE THEN NOW()
+                            ELSE updated_at
+                        END,
                     is_active = FALSE
                 WHERE employee_id = @EmployeeId;
                 """;
@@ -94,47 +196,53 @@ namespace AppointmentBooking.Api.Repositories.Employees
                 WHERE employee_id = @EmployeeId;
                 """;
 
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
 
-            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using NpgsqlTransaction transaction =
+                await connection.BeginTransactionAsync(cancellationToken);
 
             try
             {
-                CommandDefinition deactivateEmployeeCommand = new(
-                    deactivateEmployeeSql,
-                    new
-                    {
-                        EmployeeId = employeeId
-                    },
-                    transaction: transaction,
-                    cancellationToken: cancellationToken);
+                await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        deactivateEmployeeSql,
+                        new
+                        {
+                            EmployeeId = employeeId
+                        },
+                        transaction: transaction,
+                        cancellationToken: cancellationToken));
 
                 await connection.ExecuteAsync(
-                    deactivateEmployeeCommand);
-
-                CommandDefinition deactivateAssignmentsCommand = new(
-                    deactivateAssignmentsSql,
-                    new
-                    {
-                        EmployeeId = employeeId
-                    },
-                    transaction: transaction,
-                    cancellationToken: cancellationToken);
+                    new CommandDefinition(
+                        deactivateUserAccountSql,
+                        new
+                        {
+                            EmployeeId = employeeId
+                        },
+                        transaction: transaction,
+                        cancellationToken: cancellationToken));
 
                 await connection.ExecuteAsync(
-                    deactivateAssignmentsCommand);
-
-                CommandDefinition deleteWorkingHoursCommand = new(
-                    deleteWorkingHoursSql,
-                    new
-                    {
-                        EmployeeId = employeeId
-                    },
-                    transaction: transaction,
-                    cancellationToken: cancellationToken);
+                    new CommandDefinition(
+                        deactivateAssignmentsSql,
+                        new
+                        {
+                            EmployeeId = employeeId
+                        },
+                        transaction: transaction,
+                        cancellationToken: cancellationToken));
 
                 await connection.ExecuteAsync(
-                    deleteWorkingHoursCommand);
+                    new CommandDefinition(
+                        deleteWorkingHoursSql,
+                        new
+                        {
+                            EmployeeId = employeeId
+                        },
+                        transaction: transaction,
+                        cancellationToken: cancellationToken));
 
                 await transaction.CommitAsync(cancellationToken);
             }
@@ -146,129 +254,212 @@ namespace AppointmentBooking.Api.Repositories.Employees
 
         }
 
-        public async Task<PagedResult<Employee>> GetAllAsync(string? search, bool? isActive, int page, int pageSize, CancellationToken cancellationToken)
+        public async Task<PagedResult<EmployeeListItem>> GetAllAsync(
+            string? search,
+            bool? isActive,
+            int page,
+            int pageSize,
+            CancellationToken cancellationToken)
         {
             const string sql = """
-                    SELECT COUNT(*) 
-                    FROM employees
-                    WHERE 
-                    (
-                        @Search IS NULL
-                        OR first_name ILIKE @SearchPattern
-                        OR last_name ILIKE @SearchPattern
-                        OR email ILIKE @SearchPattern
-                    ) 
-                    AND 
-                    (
-                        @IsActive IS NULL
-                        OR is_active = @IsActive
-                    );
+                SELECT COUNT(*)
+                FROM employees e
+                INNER JOIN user_accounts ua
+                    ON e.user_account_id = ua.id
+                WHERE
+                (
+                    @Search IS NULL
+                    OR ua.first_name ILIKE @SearchPattern
+                    OR ua.last_name ILIKE @SearchPattern
+                    OR ua.email ILIKE @SearchPattern
+                )
+                AND
+                (
+                    @IsActive IS NULL
+                    OR e.is_active = @IsActive
+                );
 
-                    SELECT
-                        id,
-                        first_name AS FirstName,
-                        last_name AS LastName,
-                        email AS Email,
-                        phone AS Phone,
-                        is_active AS IsActive,
-                        created_at AS CreatedAt,
-                        updated_at AS UpdatedAt
-                    FROM employees
-                    WHERE 
-                    (
-                        @Search IS NULL
-                        OR first_name ILIKE @SearchPattern
-                        OR last_name ILIKE @SearchPattern
-                        OR email ILIKE @SearchPattern
-                    )
-                    AND 
-                    (
-                        @IsActive IS NULL
-                        OR is_active = @IsActive
-                    )
-                    ORDER BY id
-                    LIMIT @PageSize
-                    OFFSET @Offset;
-                    """;
-                    
-            var normalizedSearch  = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+                SELECT
+                    e.id AS Id,
+                    ua.first_name AS FirstName,
+                    ua.last_name AS LastName,
+                    ua.email AS Email,
+                    e.phone AS Phone,
+                    e.is_active AS IsActive,
+                    e.created_at AS CreatedAt,
+                    e.updated_at AS UpdatedAt
+                FROM employees e
+                INNER JOIN user_accounts ua
+                    ON e.user_account_id = ua.id
+                WHERE
+                (
+                    @Search IS NULL
+                    OR ua.first_name ILIKE @SearchPattern
+                    OR ua.last_name ILIKE @SearchPattern
+                    OR ua.email ILIKE @SearchPattern
+                )
+                AND
+                (
+                    @IsActive IS NULL
+                    OR e.is_active = @IsActive
+                )
+                ORDER BY e.id
+                LIMIT @PageSize
+                OFFSET @Offset;
+                """;
+
+            string? normalizedSearch =
+                string.IsNullOrWhiteSpace(search)
+                    ? null
+                    : search.Trim();
 
             var parameters = new
             {
                 Search = normalizedSearch,
-                SearchPattern = normalizedSearch is null ? null : $"%{normalizedSearch}%",
+                SearchPattern =
+                    normalizedSearch is null
+                        ? null
+                        : $"%{normalizedSearch}%",
+
                 IsActive = isActive,
                 PageSize = pageSize,
                 Offset = (page - 1) * pageSize
             };
 
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(
+                    cancellationToken);
 
-            var command = new CommandDefinition(
+            CommandDefinition command = new(
                 sql,
                 parameters,
                 cancellationToken: cancellationToken);
 
-            using var result = await connection.QueryMultipleAsync(command);
+            using var result =
+                await connection.QueryMultipleAsync(command);
 
-            var totalCount = await result.ReadSingleAsync<int>();
+            int totalCount =
+                await result.ReadSingleAsync<int>();
 
-            var employees = (await result.ReadAsync<Employee>()).ToArray();
+            EmployeeListItem[] employees =
+                (await result.ReadAsync<EmployeeListItem>())
+                .ToArray();
 
-            return new PagedResult<Employee>
+            return new PagedResult<EmployeeListItem>
             {
                 Items = employees,
                 TotalCount = totalCount
             };
         }
 
-        public async Task<Employee?> UpdateAsync(UpdateEmployeeData employee, CancellationToken cancellationToken)
+        public async Task<Employee> UpdateAsync(UpdateEmployeeData employee, CancellationToken cancellationToken)
         {
-            const string sql = """
-                UPDATE employees
-                SET 
+            const string updateUserAccountSql = """
+                UPDATE user_accounts
+                SET
                     first_name = @FirstName,
                     last_name = @LastName,
                     email = @Email,
+                    updated_at = NOW()
+                WHERE id = (
+                    SELECT user_account_id
+                    FROM employees
+                    WHERE id = @Id
+                )
+                RETURNING
+                    id;
+                """;
+
+            const string updateEmployeeSql = """
+                UPDATE employees
+                SET
                     phone = @Phone,
                     updated_at = NOW()
                 WHERE id = @Id
                 RETURNING
                     id,
-                    first_name AS FirstName,
-                    last_name AS LastName,
-                    email AS Email,
+                    user_account_id AS UserAccountId,
                     phone AS Phone,
                     is_active AS IsActive,
                     created_at AS CreatedAt,
                     updated_at AS UpdatedAt;
                 """;
 
+            await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
+
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+
             try
             {
-                await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+                await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        updateUserAccountSql,
+                        new
+                        {
+                            employee.FirstName,
+                            employee.LastName,
+                            employee.Email,
+                            employee.Id
+                        },
+                        transaction: transaction,
+                        cancellationToken: cancellationToken));
 
-                var command = new CommandDefinition(
-                    sql,
-                    employee,
-                    cancellationToken: cancellationToken);
+                Employee updatedEmployee =
+                    await connection.QuerySingleAsync<Employee>(
+                        new CommandDefinition(
+                            updateEmployeeSql,
+                            new
+                            {
+                                employee.Id,
+                                employee.Phone
+                            },
+                            transaction: transaction,
+                            cancellationToken: cancellationToken));
 
-                return await connection.QuerySingleOrDefaultAsync<Employee>(command);
-            } 
-            catch(PostgresException exception)
-                when (exception.SqlState == PostgresErrorCodes.UniqueViolation && exception.ConstraintName == "employees_email_key")
+                await transaction.CommitAsync(cancellationToken);
+
+                return updatedEmployee;
+            }
+            catch (PostgresException exception)
+                when (
+                    exception.SqlState == PostgresErrorCodes.UniqueViolation &&
+                    exception.ConstraintName == "uq_user_accounts_email")
             {
-                throw new EmployeeEmailAlreadyExistsException(employee.Email, exception);
+                await transaction.RollbackAsync(cancellationToken);
+
+                throw new ConflictException("An account with this email already exists.");
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
             }
         }
 
-        public async Task<Employee?> ActivateAsync(long id, CancellationToken cancellationToken)
+        public async Task<Employee> ActivateAsync(long id, CancellationToken cancellationToken)
         {
-            var sql = """
+            const string activateUserAccountSql = """
+                UPDATE user_accounts
+                SET
+                    updated_at =
+                        CASE
+                            WHEN is_active = FALSE THEN NOW()
+                            ELSE updated_at
+                        END,
+                    is_active = TRUE
+                WHERE id =
+                (
+                    SELECT user_account_id
+                    FROM employees
+                    WHERE id = @Id
+                );
+                """;
+
+            const string activateEmployeeSql = """
                 UPDATE employees
-                SET 
-                    updated_at = 
-                        CASE 
+                SET
+                    updated_at =
+                        CASE
                             WHEN is_active = FALSE THEN NOW()
                             ELSE updated_at
                         END,
@@ -276,24 +467,74 @@ namespace AppointmentBooking.Api.Repositories.Employees
                 WHERE id = @Id
                 RETURNING
                     id,
-                    first_name AS FirstName,
-                    last_name AS LastName,
-                    email AS Email,
+                    user_account_id AS UserAccountId,
                     phone AS Phone,
                     is_active AS IsActive,
                     created_at AS CreatedAt,
                     updated_at AS UpdatedAt;
                 """;
 
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
 
-            var command = new CommandDefinition(
-                sql,
-                new { Id = id},
-                cancellationToken: cancellationToken);
+            await using NpgsqlTransaction transaction =
+                await connection.BeginTransactionAsync(cancellationToken);
 
-            return await connection.QuerySingleOrDefaultAsync<Employee>(command);
+            try
+            {
+                await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        activateUserAccountSql,
+                        new { Id = id },
+                        transaction: transaction,
+                        cancellationToken: cancellationToken));
+
+                Employee activatedEmployee =
+                    await connection.QuerySingleAsync<Employee>(
+                        new CommandDefinition(
+                            activateEmployeeSql,
+                            new { Id = id },
+                            transaction: transaction,
+                            cancellationToken: cancellationToken));
+
+                await transaction.CommitAsync(cancellationToken);
+
+                return activatedEmployee;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
         }
 
+
+        public async Task<Employee?> GetByUserAccountIdAsync(long userAccountId, CancellationToken cancellationToken)
+        {
+            const string sql = """
+                SELECT
+                    id,
+                    user_account_id AS UserAccountId,
+                    phone AS Phone,
+                    is_active AS IsActive,
+                    created_at AS CreatedAt,
+                    updated_at AS UpdatedAt
+                FROM employees
+                WHERE user_account_id = @UserAccountId;
+                """;
+
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(
+                    cancellationToken);
+
+            return await connection.QuerySingleOrDefaultAsync<Employee>(
+                new CommandDefinition(
+                    sql,
+                    new
+                    {
+                        UserAccountId = userAccountId
+                    },
+                    cancellationToken: cancellationToken));
+        }
     }
 }

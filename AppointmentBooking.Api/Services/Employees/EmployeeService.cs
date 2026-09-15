@@ -3,32 +3,55 @@ using AppointmentBooking.Api.DTOs.Employees.Request;
 using AppointmentBooking.Api.DTOs.Employees.Response;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using AppointmentBooking.Api.Repositories.Employees;
+using AppointmentBooking.Api.Repositories.UserAccounts;
+using AppointmentBooking.Api.Services.CurrentUser;
+using Microsoft.AspNetCore.Identity;
 
 namespace AppointmentBooking.Api.Services.Employees
 {
-    public sealed class EmployeeService(IEmployeeRepository employeeRepository) : IEmployeeService
+    public sealed class EmployeeService(IEmployeeRepository employeeRepository, IUserAccountRepository userAccountRepository, IPasswordHasher<UserAccount> passwordHasher, ICurrentUserService currentUser) : IEmployeeService
     {
         public async Task<EmployeeResponse> CreateAsync(CreateEmployeeRequest request, CancellationToken cancellationToken)
         {
-            var employee = new Employee
+            string email = request.Email.Trim();
+
+            UserAccount? existingUserAccount = await userAccountRepository.GetByEmailAsync(email, cancellationToken); 
+            if (existingUserAccount is not null) throw new ConflictException ("An account with this email already exists.");
+
+            UserAccount userAccount = new()
             {
                 FirstName = request.FirstName.Trim(),
                 LastName = request.LastName.Trim(),
-                Email = request.Email.Trim(),
-                Phone = request.Phone.Trim()
+                Email = email,
+                PasswordHash = string.Empty,
+                Role = UserRole.Employee,
+                IsActive = true
             };
-            
-            var createdEmployee = await employeeRepository.CreateAsync(employee, cancellationToken);
 
-            return MapToResponse(createdEmployee);
+            userAccount.PasswordHash =
+               passwordHasher.HashPassword(
+                   userAccount,
+                   request.Password);
+
+            Employee createdEmployee = await employeeRepository.CreateEmployeeAccountAsync(
+                    userAccount,
+                    request.Phone.Trim(),
+                    cancellationToken);
+
+            return MapToResponse(createdEmployee, userAccount);
         }
 
-        public async Task<EmployeeResponse?> GetByIdAsync(long id, CancellationToken cancellationToken)
+        public async Task<EmployeeResponse> GetByIdAsync(long id, CancellationToken cancellationToken)
         {
-            var employee = await employeeRepository.GetByIdAsync(id, cancellationToken);
-            
-            return employee is null ? null : MapToResponse(employee);
+            Employee? employee = await employeeRepository.GetByIdAsync(id, cancellationToken);
+            if (employee is null) throw new NotFoundException($"Employee with ID '{id}' was not found.");
+
+            UserAccount? userAccount = await userAccountRepository.GetByIdAsync(employee.UserAccountId, cancellationToken);
+            if (userAccount is null) throw new NotFoundException($"User account with ID '{employee.UserAccountId}' was not found.");
+
+            return MapToResponse(employee, userAccount);
         }
 
         public async Task DeactivateAsync(long id, CancellationToken cancellationToken)
@@ -37,15 +60,22 @@ namespace AppointmentBooking.Api.Services.Employees
             if (employee is null) throw new NotFoundException($"Employee with ID '{id}' was not found.");
             if (!employee.IsActive) throw new ConflictException($"Employee with ID '{id}' is already inactive.");
 
-
             await employeeRepository.DeactivateAsync(id, cancellationToken);
         }
 
         public async Task<PagedResponse<EmployeeResponse>> GetAllAsync(GetEmployeesQuery query, CancellationToken cancellationToken)
         {
-            var result = await employeeRepository.GetAllAsync(query.Search, query.IsActive, query.Page, query.PageSize, cancellationToken);
+            PagedResult<EmployeeListItem> result = await employeeRepository.GetAllAsync(
+              query.Search,
+              query.IsActive,
+              query.Page,
+              query.PageSize,
+              cancellationToken);
 
-            var employees = result.Items.Select(MapToResponse).ToArray();
+            EmployeeResponse[] employees =
+                result.Items
+                    .Select(MapToResponse)
+                    .ToArray();
 
             return new PagedResponse<EmployeeResponse>
             {
@@ -56,43 +86,94 @@ namespace AppointmentBooking.Api.Services.Employees
             };
         }
 
-        public async Task<EmployeeResponse?> UpdateAsync(long id, UpdateEmployeeRequest request, CancellationToken cancellationToken)
+        public async Task<EmployeeResponse> UpdateAsync(long id, UpdateEmployeeRequest request, CancellationToken cancellationToken)
         {
-            UpdateEmployeeData employees = new UpdateEmployeeData
+            Employee? existingEmployee = await employeeRepository.GetByIdAsync(id, cancellationToken);
+            if (existingEmployee is not null) throw new NotFoundException($"Employee with ID '{id}' was not found.");
+
+            string email = request.Email.Trim();
+
+            UserAccount? existingUserAccount = await userAccountRepository.GetByEmailAsync(email, cancellationToken);
+            if (existingUserAccount is not null && existingUserAccount.Id != existingEmployee.UserAccountId) throw new ConflictException("An account with this email already exists.");
+
+            UpdateEmployeeData data = new()
             {
                 Id = id,
                 FirstName = request.FirstName.Trim(),
                 LastName = request.LastName.Trim(),
-                Email = request.Email.Trim(),
-                Phone = request.Phone.Trim(),
+                Email = email,
+                Phone = request.Phone.Trim()
             };
 
-            var updatedEmployee = await employeeRepository.UpdateAsync(employees, cancellationToken);
+            Employee updatedEmployee = await employeeRepository.UpdateAsync(data, cancellationToken);
 
-            return updatedEmployee is null ? null : MapToResponse(updatedEmployee);
+            UserAccount? updatedUserAccount = await userAccountRepository.GetByIdAsync(updatedEmployee.UserAccountId,cancellationToken);
+
+            if (updatedUserAccount is null) throw new NotFoundException( $"User account with ID '{updatedEmployee.UserAccountId}' was not found.");
+
+            return MapToResponse(updatedEmployee, updatedUserAccount);
         }
 
-        public async Task<EmployeeResponse?> ActivateAsync(long id, CancellationToken cancellationToken)
+        public async Task<EmployeeResponse> ActivateAsync(long id, CancellationToken cancellationToken)
         {
-            Employee? employee = await employeeRepository.ActivateAsync(id, cancellationToken);
+            Employee? employee = await employeeRepository.GetByIdAsync(id, cancellationToken);
+            if (employee is null) throw new NotFoundException($"Employee with ID '{id}' was not found.");
+            if (employee.IsActive) throw new ConflictException($"Employee with ID '{id}' is already active.");
 
-            return employee is null ? null : MapToResponse(employee);
+            Employee activatedEmployee = await employeeRepository.ActivateAsync(id, cancellationToken);
+
+            UserAccount? userAccount = await userAccountRepository.GetByIdAsync(activatedEmployee.UserAccountId, cancellationToken);
+
+            if (userAccount is null) throw new NotFoundException($"User account with ID '{activatedEmployee.UserAccountId}' was not found.");
+            
+
+            return MapToResponse(activatedEmployee, userAccount);
+        }
+
+        public async Task<EmployeeResponse> GetMyProfileAsync(CancellationToken cancellationToken)
+        {
+            Employee employee = await GetCurrentEmployeeAsync(cancellationToken);
+
+            UserAccount? userAccount = await userAccountRepository.GetByIdAsync(employee.UserAccountId, cancellationToken);
+            if (userAccount is null) throw new NotFoundException("User account was not found");
+
+            return MapToResponse(employee, userAccount);
         }
 
 
-        private static EmployeeResponse MapToResponse(Employee employee)
+        private static EmployeeResponse MapToResponse(Employee employee, UserAccount userAccount) 
         {
-            return new EmployeeResponse
-            {
-                Id = employee.Id,
-                FirstName = employee.FirstName,
-                LastName = employee.LastName,
-                Email = employee.Email,
-                Phone = employee.Phone,
-                IsActive = employee.IsActive,
-                CreatedAt = employee.CreatedAt,
-                UpdatedAt = employee.UpdatedAt
-            };
+            return new EmployeeResponse(
+                employee.Id,
+                userAccount.FirstName,
+                userAccount.LastName,
+                userAccount.Email,
+                employee.Phone,
+                employee.IsActive,
+                employee.CreatedAt,
+                employee.UpdatedAt);
+        }
+
+        private static EmployeeResponse MapToResponse(EmployeeListItem employee)
+        {
+            return new EmployeeResponse(
+                employee.Id,
+                employee.FirstName,
+                employee.LastName,
+                employee.Email,
+                employee.Phone,
+                employee.IsActive,
+                employee.CreatedAt,
+                employee.UpdatedAt);
+        }
+
+        private async Task<Employee> GetCurrentEmployeeAsync(CancellationToken cancellationToken)
+        {
+            Employee? employee = await employeeRepository.GetByUserAccountIdAsync(currentUser.UserAccountId, cancellationToken);
+
+            if (employee is null) throw new NotFoundException("Employee profile was not found.");
+            
+            return employee;
         }
     }
 }

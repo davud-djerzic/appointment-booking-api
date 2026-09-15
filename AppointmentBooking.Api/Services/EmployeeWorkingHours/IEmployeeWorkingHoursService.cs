@@ -14,5 +14,7 @@ namespace AppointmentBooking.Api.Services.EmployeeWorkingHoursService
 
         Task DeleteAsync(long employeeId, long workingHoursId, CancellationToken cancellationToken);
 
+        Task<bool> IsWithinWorkingHoursAsync(long employeeId,DateTimeOffset startsAt,DateTimeOffset endsAt, CancellationToken cancellationToken);
+
     }
 }

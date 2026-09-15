@@ -2,7 +2,7 @@
 using AppointmentBooking.Api.DTOs.Employees.Response;
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Response;
-using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using FluentAssertions;
 using System;
 using System.Collections.Generic;

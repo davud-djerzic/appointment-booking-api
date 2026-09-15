@@ -4,6 +4,7 @@ using AppointmentBooking.Api.DTOs.Appointments.Response;
 using AppointmentBooking.Api.DTOs.Common;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using AppointmentBooking.Api.Repositories.Appointments;
 using AppointmentBooking.Api.Repositories.Employees;
 using AppointmentBooking.Api.Repositories.EmployeeServices;
@@ -13,12 +14,12 @@ using Microsoft.Extensions.Options;
 
 namespace AppointmentBooking.Api.Services.Appointments
 {
-    public class AppointmentService(IAppointmentRepository appointmentRepository, IEmployeeRepository employeeRepository, IBookableServiceRepository bookableServiceRepository, IEmployeeServiceRepository assignmentRepository, IOptions<AppointmentOptions> options, TimeProvider timeProvider, ILogger<AppointmentService> logger) : IAppointmentService
+    public class AppointmentService(IAppointmentRepository appointmentRepository, IEmployeeRepository employeeRepository, IBookableServiceRepository bookableServiceRepository, IEmployeeServiceRepository assignmentRepository, IOptions<BookingOptions> options, TimeProvider timeProvider, ILogger<AppointmentService> logger) : IAppointmentService
     {
-        private readonly AppointmentOptions appointmentOptions = options.Value;
+        private readonly BookingOptions appointmentOptions = options.Value;
         private readonly TimeProvider timeProvider = timeProvider;
 
-        public async Task<AppointmentHoldResponse> CreateHoldAsync(CreateAppointmentHoldRequest request, CancellationToken cancellationToken)
+       /* public async Task<AppointmentHoldResponse> CreateHoldAsync(CreateAppointmentHoldRequest request, CancellationToken cancellationToken)
         {
             DateTimeOffset now = timeProvider.GetUtcNow();
 
@@ -62,9 +63,9 @@ namespace AppointmentBooking.Api.Services.Appointments
             Appointment appointment = await appointmentRepository.CreateHoldAsync(data, cancellationToken);
 
             return new AppointmentHoldResponse(appointment.Id, appointment.HoldToken!.Value, appointment.HoldExpiresAt!.Value);
-        }
+        }*/
 
-        public async Task<AppointmentResponse> ConfirmAsync(Guid holdToken, ConfirmHoldAppointment request, CancellationToken cancellationToken)
+       /* public async Task<AppointmentResponse> ConfirmAsync(Guid holdToken, ConfirmHoldAppointment request, CancellationToken cancellationToken)
         {
             Appointment? appointment = await appointmentRepository.GetByHoldTokenAsync(holdToken, cancellationToken);
             if (appointment is null) throw new NotFoundException($"Appointment with hold token '{holdToken}' was not found.");
@@ -82,18 +83,18 @@ namespace AppointmentBooking.Api.Services.Appointments
             Appointment confirmedAppointment = await appointmentRepository.ConfirmHoldAsync(data, cancellationToken);
             
             return MapToResponse(confirmedAppointment);
-        }
+        }*/
 
-        public async Task DeleteHeldAsync(Guid holdToken, CancellationToken cancellationToken)
+       /* public async Task DeleteHeldAsync(Guid holdToken, CancellationToken cancellationToken)
         {
             Appointment? appointment = await appointmentRepository.GetByHoldTokenAsync(holdToken, cancellationToken);
             if (appointment is null) throw new NotFoundException($"Appointment with hold token '{holdToken}' was not found.");
             if (appointment.Status != AppointmentStatus.Held) throw new ConflictException("Only held appointments can be deleted.");
             bool deleted = await appointmentRepository.DeleteHeldAsync(appointment.Id, cancellationToken);
             if (!deleted) throw new ConflictException($"Failed to delete appointment with hold token '{holdToken}'.");
-        }
+        }*/
 
-        public async Task CancelAsync(long appointmentId, CancellationToken cancellationToken)
+       /* public async Task CancelAsync(long appointmentId, CancellationToken cancellationToken)
         {
             Appointment? appointment = await appointmentRepository.GetByIdAsync(appointmentId, cancellationToken);
             if (appointment is null) throw new NotFoundException($"Appointment with ID '{appointmentId}' was not found.");
@@ -101,9 +102,9 @@ namespace AppointmentBooking.Api.Services.Appointments
 
             bool deleted = await appointmentRepository.CancelAsync(appointment.Id, cancellationToken);
             if (!deleted) throw new ConflictException($"Failed to cancel appointment with id '{appointmentId}'.");
-        }
+        }*/
 
-        public async Task CompleteAsync(long appointmentId, CancellationToken cancellationToken)
+       /* public async Task CompleteAsync(long appointmentId, CancellationToken cancellationToken)
         {
             Appointment? appointment = await appointmentRepository.GetByIdAsync(appointmentId, cancellationToken);
             if (appointment is null) throw new NotFoundException($"Appointment with ID '{appointmentId}' was not found.");
@@ -153,24 +154,20 @@ namespace AppointmentBooking.Api.Services.Appointments
                 TotalCount = result.TotalCount
             };
 
-        }
+        }*/
 
         private static AppointmentResponse MapToResponse(Appointment appointment)
         {
             return new AppointmentResponse(
                 appointment.Id,
-                appointment.EmployeeId,
+                appointment.BookingId,
                 appointment.ServiceId,
-                appointment.CustomerFirstName,
-                appointment.CustomerLastName,
-                appointment.CustomerEmail,
-                appointment.CustomerPhone,
+                appointment.ServiceNameAtBooking,
+                appointment.DurationMinutesAtBooking,
+                appointment.PriceAtBooking,
                 appointment.StartsAt,
                 appointment.EndsAt,
-                appointment.Status,
-                appointment.Notes, 
-                appointment.CreatedAt,
-                appointment.UpdatedAt);
+                appointment.Status);
         }
 
     }

@@ -1,6 +1,7 @@
 ﻿using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Extension;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using Dapper;
 using Npgsql;
 
@@ -8,7 +9,7 @@ namespace AppointmentBooking.Api.Repositories.Appointments
 {
     public class AppointmentRepository(NpgsqlDataSource dataSource) : IAppointmentRepository
     {
-        public async Task<Appointment> CreateHoldAsync(CreateAppointmentHoldData data, CancellationToken cancellationToken)
+       /* public async Task<Appointment> CreateHoldAsync(CreateAppointmentHoldData data, CancellationToken cancellationToken)
         {
             const string sql = """
                 INSERT INTO appointments
@@ -73,9 +74,9 @@ namespace AppointmentBooking.Api.Repositories.Appointments
             {
                 throw new AppointmentSlotUnavailableException(ex);
             }
-        }
+        }*/
 
-        public async Task<Appointment?> GetByHoldTokenAsync(Guid holdToken, CancellationToken cancellationToken)
+        /*public async Task<Appointment?> GetByHoldTokenAsync(Guid holdToken, CancellationToken cancellationToken)
         {
             string sql = """
                 SELECT 
@@ -106,41 +107,35 @@ namespace AppointmentBooking.Api.Repositories.Appointments
                 cancellationToken: cancellationToken);
 
             return await connection.QuerySingleOrDefaultAsync<Appointment>(command);
-        }
+        }*/
 
         public async Task<Appointment?> GetByIdAsync(long id, CancellationToken cancellationToken)
         {
-            string sql = """
-                SELECT 
+            const string sql = """
+                SELECT
                     id,
-                    employee_id AS EmployeeId,
+                    booking_id AS BookingId,
                     service_id AS ServiceId,
-                    customer_first_name AS CustomerFirstName,
-                    customer_last_name AS CustomerLastName,
-                    customer_email AS CustomerEmail,
-                    customer_phone AS CustomerPhone,
                     starts_at AS StartsAt,
                     ends_at AS EndsAt,
                     status AS Status,
-                    hold_token AS HoldToken,
-                    hold_expires_at AS HoldExpiresAt,
-                    notes AS Notes,
                     created_at AS CreatedAt,
                     updated_at AS UpdatedAt
                 FROM appointments
                 WHERE id = @Id;
                 """;
 
-            await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
 
-            CommandDefinition command = new CommandDefinition(
+            CommandDefinition command = new(
                 sql,
                 new { Id = id },
                 cancellationToken: cancellationToken);
 
             return await connection.QuerySingleOrDefaultAsync<Appointment>(command);
         }
-        public async Task<Appointment> ConfirmHoldAsync(ConfirmAppointmentData data, CancellationToken cancellationToken)
+        /*public async Task<Appointment> ConfirmHoldAsync(ConfirmAppointmentData data, CancellationToken cancellationToken)
         {
             const string sql = """
                 UPDATE appointments
@@ -190,9 +185,9 @@ namespace AppointmentBooking.Api.Repositories.Appointments
                 cancellationToken: cancellationToken);
 
             return await connection.QuerySingleAsync<Appointment>(command);
-        }
+        }*/
 
-        public async Task<bool> DeleteHeldAsync(long id, CancellationToken cancellationToken)
+        /*public async Task<bool> DeleteHeldAsync(long id, CancellationToken cancellationToken)
         {
             string sql = """
                 DELETE FROM appointments
@@ -207,9 +202,9 @@ namespace AppointmentBooking.Api.Repositories.Appointments
 
             int affectedRows = await connection.ExecuteAsync(command);
             return affectedRows > 0;
-        }
+        }*/
 
-        public async Task<bool> CancelAsync(long appointmentId, CancellationToken cancellationToken)
+       /* public async Task<bool> CancelAsync(long appointmentId, CancellationToken cancellationToken)
         {
             const string sql = """
                 UPDATE appointments
@@ -232,9 +227,9 @@ namespace AppointmentBooking.Api.Repositories.Appointments
 
             int affectedRows = await connection.ExecuteAsync(command);
             return affectedRows > 0;
-        }
+        }*/
 
-        public async Task<bool> CompleteAsync(long appointmentId, CancellationToken cancellationToken)
+       /* public async Task<bool> CompleteAsync(long appointmentId, CancellationToken cancellationToken)
         {
             const string sql = """
                 UPDATE appointments
@@ -257,9 +252,9 @@ namespace AppointmentBooking.Api.Repositories.Appointments
 
             int affectedRows = await connection.ExecuteAsync(command);
             return affectedRows > 0;
-        }
+        }*/
 
-        public async Task<int> DeleteExpiredHoldsAsync(CancellationToken cancellationToken)
+      /*  public async Task<int> DeleteExpiredHoldsAsync(CancellationToken cancellationToken)
         {
             const string sql = """
                 DELETE FROM appointments
@@ -306,73 +301,125 @@ namespace AppointmentBooking.Api.Repositories.Appointments
         {
             List<string> conditions = [];
 
-            if (criteria.EmployeeId.HasValue) conditions.Add("a.employee_id = @EmployeeId");
+            if (criteria.EmployeeId.HasValue) conditions.Add("b.employee_id = @EmployeeId");
+            
+
             if (criteria.ServiceId.HasValue) conditions.Add("a.service_id = @ServiceId");
+            
+
             if (criteria.Status.HasValue) conditions.Add("a.status = @Status");
-            if (criteria.Date.HasValue)  conditions.Add("a.starts_at::date = @Date");
+            
 
-            string whereClause = conditions.Count > 0 ? $"WHERE { string.Join(" AND ", conditions)}" : string.Empty;
+            if (criteria.Date.HasValue) conditions.Add("a.starts_at::date = @Date");
+           
 
+            string whereClause = conditions.Count > 0
+                    ? $"WHERE {string.Join(" AND ", conditions)}"
+                    : string.Empty;
 
-            string sql = $"""
-                SELECT COUNT(*) 
+            const string sqlTemplate = """
+                SELECT COUNT(*)
                 FROM appointments a
-                {whereClause};
+                INNER JOIN bookings b
+                    ON a.booking_id = b.id
+                INNER JOIN customers c
+                    ON b.customer_id = c.id
+                INNER JOIN user_accounts customer_account
+                    ON c.user_account_id = customer_account.id
+                INNER JOIN employees e
+                    ON b.employee_id = e.id
+                INNER JOIN user_accounts employee_account
+                    ON e.user_account_id = employee_account.id
+                INNER JOIN services s
+                    ON a.service_id = s.id
+                {0};
 
-                SELECT 
-                    a.id,
-                    a.employee_id AS EmployeeId,
-                    e.first_name AS EmployeeFirstName,
-                    e.last_name AS EmployeeLastName,
+                SELECT
+                    a.id AS Id,
+                    a.booking_id AS BookingId,
+
+                    b.customer_id AS CustomerId,
+                    customer_account.first_name AS CustomerFirstName,
+                    customer_account.last_name AS CustomerLastName,
+                    customer_account.email AS CustomerEmail,
+                    c.phone AS CustomerPhone,
+
+                    b.employee_id AS EmployeeId,
+                    employee_account.first_name AS EmployeeFirstName,
+                    employee_account.last_name AS EmployeeLastName,
+
                     a.service_id AS ServiceId,
                     s.name AS ServiceName,
-                    a.customer_first_name AS CustomerFirstName,
-                    a.customer_last_name AS CustomerLastName,
-                    a.customer_email AS CustomerEmail,
-                    a.customer_phone AS CustomerPhone,
+
                     a.starts_at AS StartsAt,
                     a.ends_at AS EndsAt,
                     a.status AS Status,
-                    a.notes AS Notes
-                    FROM appointments a
-                    INNER JOIN employees e
-                        ON a.employee_id = e.id
-                    INNER JOIN services s
-                        ON a.service_id = s.id
-                    {whereClause}
-                  ORDER BY a.starts_at
-                  LIMIT @PageSize
-                  OFFSET @Offset;    
+                    b.notes AS Notes
+
+                FROM appointments a
+
+                INNER JOIN bookings b
+                    ON a.booking_id = b.id
+
+                INNER JOIN customers c
+                    ON b.customer_id = c.id
+
+                INNER JOIN user_accounts customer_account
+                    ON c.user_account_id = customer_account.id
+
+                INNER JOIN employees e
+                    ON b.employee_id = e.id
+
+                INNER JOIN user_accounts employee_account
+                    ON e.user_account_id = employee_account.id
+
+                INNER JOIN services s
+                    ON a.service_id = s.id
+
+                {0}
+
+                ORDER BY a.starts_at
+                LIMIT @PageSize
+                OFFSET @Offset;
                 """;
+
+            string sql = string.Format(
+                sqlTemplate,
+                whereClause);
 
             var parameters = new
             {
                 criteria.EmployeeId,
                 criteria.ServiceId,
                 Status = criteria.Status?.ToDatabaseValue(),
-                Date = criteria.Date?.ToDateTime(TimeOnly.MinValue),
-                PageSize = criteria.PageSize,
+                Date = criteria.Date,
+                criteria.PageSize,
                 Offset = (criteria.Page - 1) * criteria.PageSize
             };
 
-            await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
 
-            CommandDefinition command = new CommandDefinition(
+            CommandDefinition command = new(
                 sql,
                 parameters,
                 cancellationToken: cancellationToken);
 
-            using var result = await connection.QueryMultipleAsync(command);
+            using var result =
+                await connection.QueryMultipleAsync(command);
 
-            int totalCount = await result.ReadSingleAsync<int>();
+            int totalCount =
+                await result.ReadSingleAsync<int>();
 
-            var appointments = (await result.ReadAsync<AppointmentListItem>()).ToArray();
+            AppointmentListItem[] appointments =
+                (await result.ReadAsync<AppointmentListItem>())
+                .ToArray();
 
             return new PagedResult<AppointmentListItem>
             {
                 Items = appointments,
                 TotalCount = totalCount
             };
-        }
+        }/*/
     }
 }

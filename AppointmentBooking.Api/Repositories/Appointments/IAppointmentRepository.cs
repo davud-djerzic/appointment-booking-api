@@ -3,7 +3,7 @@
 namespace AppointmentBooking.Api.Repositories.Appointments
 {
     public interface IAppointmentRepository
-    {
+    {/*
         Task<Appointment> CreateHoldAsync(CreateAppointmentHoldData data, CancellationToken cancellationToken);
 
         Task<Appointment?> GetByHoldTokenAsync(Guid holdToken, CancellationToken cancellationToken);
@@ -22,6 +22,6 @@ namespace AppointmentBooking.Api.Repositories.Appointments
 
         Task<int> DeleteExpiredHoldsAsync(CancellationToken cancellationToken);
 
-        Task<int> CompleteExpiredAppointmentsAsync(CancellationToken cancellationToken);
+        Task<int> CompleteExpiredAppointmentsAsync(CancellationToken cancellationToken);*/
     }
 }
