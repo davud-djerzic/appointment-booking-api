@@ -59,5 +59,32 @@ namespace AppointmentBooking.Api.Repositories.UserAccounts
                     new { Id = id },
                     cancellationToken: cancellationToken));
         }
+
+        public async Task<bool> UpdatePasswordHashAsync(long userAccountId, string passwordHash, CancellationToken cancellationToken)
+        {
+            const string sql = """
+                UPDATE user_accounts
+                SET
+                    password_hash = @PasswordHash,
+                    updated_at = NOW()
+                WHERE id = @UserAccountId
+                  AND is_active = TRUE;
+                """;
+
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
+
+            int rowsAffected = await connection.ExecuteAsync(
+                new CommandDefinition(
+                    sql,
+                    new
+                    {
+                        UserAccountId = userAccountId,
+                        PasswordHash = passwordHash
+                    },
+                    cancellationToken: cancellationToken));
+
+            return rowsAffected > 0;
+        }
     }
 }

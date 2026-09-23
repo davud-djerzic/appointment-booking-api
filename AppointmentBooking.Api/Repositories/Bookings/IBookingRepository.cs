@@ -1,4 +1,5 @@
-﻿using AppointmentBooking.Api.Models;
+﻿using AppointmentBooking.Api.DTOs.Bookings.Response;
+using AppointmentBooking.Api.Models;
 
 namespace AppointmentBooking.Api.Repositories.Bookings
 {
@@ -23,5 +24,7 @@ namespace AppointmentBooking.Api.Repositories.Bookings
         Task<IReadOnlyList<BookingTimeRange>> GetScheduledTimeRangesAsync(long employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken);
 
         Task<PagedResult<AdminBookingListItem>> GetAdminBookingsAsync(AdminBookingSearchCriteria criteria, CancellationToken cancellationToken);
+
+        Task<IReadOnlyList<BookableEmployeeResponse>> GetBookableEmployeesAsync(IReadOnlyCollection<long> serviceIds, CancellationToken cancellationToken);
     }
 }

@@ -7,5 +7,7 @@ namespace AppointmentBooking.Api.Repositories.UserAccounts
         Task<UserAccount?> GetByEmailAsync(string email, CancellationToken cancellationToken);
 
         Task<UserAccount?> GetByIdAsync(long id, CancellationToken cancellationToken);
+
+        Task<bool> UpdatePasswordHashAsync(long userAccountId, string passwordHash, CancellationToken cancellationToken);
     }
 }

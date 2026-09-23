@@ -160,5 +160,22 @@ namespace AppointmentBooking.Api.Controllers
 
             return Ok(response);
         }
+
+        [Authorize(Roles = "Customer")]
+        [HttpGet("bookable-employees")]
+        [ProducesResponseType<IReadOnlyList<BookableEmployeeResponse>>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<IReadOnlyList<BookableEmployeeResponse>>> GetBookableEmployees([FromQuery] long[] serviceIds,CancellationToken cancellationToken)
+        {
+            IReadOnlyList<BookableEmployeeResponse> employees =
+                await bookingService.GetBookableEmployeesAsync(
+                    serviceIds,
+                    cancellationToken);
+
+            return Ok(employees);
+        }
     }
 }

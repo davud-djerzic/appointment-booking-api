@@ -22,6 +22,7 @@ using AppointmentBooking.Api.Services.CurrentUser;
 using AppointmentBooking.Api.Services.Employees;
 using AppointmentBooking.Api.Services.EmployeeServices;
 using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;
+using AppointmentBooking.Api.Services.Profile;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
@@ -154,6 +155,8 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<IProfileService, ProfileService>();
+
 
 var app = builder.Build();
 

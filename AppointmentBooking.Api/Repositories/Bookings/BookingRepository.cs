@@ -1,4 +1,5 @@
-﻿using AppointmentBooking.Api.Exceptions;
+﻿using AppointmentBooking.Api.DTOs.Bookings.Response;
+using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
 using AppointmentBooking.Api.Models.Enums;
 using Dapper;
@@ -1072,6 +1073,52 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 Items = items,
                 TotalCount = totalCount
             };
+        }
+
+        public async Task<IReadOnlyList<BookableEmployeeResponse>> GetBookableEmployeesAsync(
+            IReadOnlyCollection<long> serviceIds,
+            CancellationToken cancellationToken)
+                {
+                    const string sql = """
+                SELECT
+                    e.id AS Id,
+                    ua.first_name AS FirstName,
+                    ua.last_name AS LastName
+                FROM employees AS e
+                INNER JOIN user_accounts AS ua
+                    ON ua.id = e.user_account_id
+                INNER JOIN employee_services AS es
+                    ON es.employee_id = e.id
+                WHERE
+                    e.is_active = TRUE
+                    AND ua.is_active = TRUE
+                    AND es.is_active = TRUE
+                    AND es.service_id = ANY(@ServiceIds)
+                GROUP BY
+                    e.id,
+                    ua.first_name,
+                    ua.last_name
+                HAVING COUNT(DISTINCT es.service_id) = @ServiceCount
+                ORDER BY
+                    ua.first_name,
+                    ua.last_name;
+                """;
+
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
+
+            IEnumerable<BookableEmployeeResponse> employees =
+                await connection.QueryAsync<BookableEmployeeResponse>(
+                    new CommandDefinition(
+                        sql,
+                        new
+                        {
+                            ServiceIds = serviceIds.ToArray(),
+                            ServiceCount = serviceIds.Count
+                        },
+                        cancellationToken: cancellationToken));
+
+            return employees.ToList();
         }
 
         private sealed class BookingReadRow

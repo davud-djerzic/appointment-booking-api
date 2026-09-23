@@ -69,35 +69,39 @@ namespace AppointmentBooking.Api.Repositories.Services
             return await connection.QuerySingleOrDefaultAsync<BookableService>(command);
         }
 
-        public async Task<bool> DeactivateAsync(long id, CancellationToken cancellationToken)
+        public async Task<bool> DeactivateAsync(
+            long id,
+            CancellationToken cancellationToken)
         {
             const string deactivateServiceSql = """
-                    UPDATE services 
-                    SET 
-                        updated_at =
-                        CASE 
-                            WHEN is_active = TRUE THEN NOW()
-                            ELSE updated_at
-                        END,
-                        is_active = FALSE
-                    WHERE id = @Id; 
-                    """;
+        UPDATE services
+        SET
+            updated_at =
+                CASE
+                    WHEN is_active = TRUE THEN NOW()
+                    ELSE updated_at
+                END,
+            is_active = FALSE
+        WHERE id = @Id;
+        """;
 
             const string deactivateAssignmentsSql = """
-                UPDATE employee_services 
-                SET 
-                    updated_at =
-                    CASE 
-                        WHEN is_active = TRUE THEN NOW()
-                        ELSE updated_at
-                    END,
-                    is_active = FALSE
-                WHERE service_id = @Id;
-                """;
+        UPDATE employee_services
+        SET
+            updated_at =
+                CASE
+                    WHEN is_active = TRUE THEN NOW()
+                    ELSE updated_at
+                END,
+            is_active = FALSE
+        WHERE service_id = @Id;
+        """;
 
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
 
-            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            await using NpgsqlTransaction transaction =
+                await connection.BeginTransactionAsync(cancellationToken);
 
             try
             {
@@ -107,7 +111,8 @@ namespace AppointmentBooking.Api.Repositories.Services
                     transaction: transaction,
                     cancellationToken: cancellationToken);
 
-                int affectedRows = await connection.ExecuteAsync(deactivateServiceSql);
+                int affectedRows =
+                    await connection.ExecuteAsync(deactivateServiceCommand);
 
                 if (affectedRows == 0)
                 {
@@ -126,7 +131,6 @@ namespace AppointmentBooking.Api.Repositories.Services
                 await transaction.CommitAsync(cancellationToken);
 
                 return true;
-
             }
             catch
             {

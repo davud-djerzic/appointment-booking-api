@@ -351,5 +351,27 @@ namespace AppointmentBooking.Api.Repositories.Auth
                 cancellationToken: cancellationToken));
 
         }
+
+        public async Task RevokeAllRefreshTokensAsync(long userAccountId, CancellationToken cancellationToken)
+        {
+            const string sql = """
+                UPDATE user_refresh_tokens
+                SET revoked_at = NOW()
+                WHERE user_account_id = @UserAccountId
+                  AND revoked_at IS NULL;
+                """;
+
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
+
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    sql,
+                    new
+                    {
+                        UserAccountId = userAccountId
+                    },
+                    cancellationToken: cancellationToken));
+        }
     }
 }

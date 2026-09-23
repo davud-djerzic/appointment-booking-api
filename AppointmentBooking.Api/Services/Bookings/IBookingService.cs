@@ -28,5 +28,7 @@ namespace AppointmentBooking.Api.Services.Bookings
         Task<PagedResponse<AdminBookingSummaryResponse>> GetAdminBookingsAsync(GetAdminBookingsQuery query, CancellationToken cancellationToken);
 
         Task<QuickAvailabilityResponse> GetQuickAvailabilityAsync(GetQuickAvailabilityQuery query, CancellationToken cancellationToken);
+
+        Task<IReadOnlyList<BookableEmployeeResponse>> GetBookableEmployeesAsync(IReadOnlyCollection<long> serviceIds, CancellationToken cancellationToken);
     }
 }

@@ -14,5 +14,7 @@ namespace AppointmentBooking.Api.Repositories.Auth
         Task RevokeRefreshTokenAsync(long refreshTokenid, CancellationToken cancellationToken); 
 
         Task RevokeRefreshTokenFamilyAsync(Guid familyId, CancellationToken cancellationToken);
+
+        Task RevokeAllRefreshTokensAsync(long userAccountId, CancellationToken cancellationToken);
     }
 }

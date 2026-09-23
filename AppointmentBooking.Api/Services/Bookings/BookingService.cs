@@ -433,6 +433,17 @@ namespace AppointmentBooking.Api.Services.Bookings
             return new BookingAvailabilityResponse(employeeId, date, totalDurationMinutes, availableSlots);
         }
 
+        public async Task<IReadOnlyList<BookableEmployeeResponse>> GetBookableEmployeesAsync(IReadOnlyCollection<long> serviceIds, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            long[] validatedServiceIds =
+                ValidateServiceIds(serviceIds);
+
+            return await bookingRepository.GetBookableEmployeesAsync(
+                validatedServiceIds,
+                cancellationToken);
+        }
         public async Task<PagedResponse<AdminBookingSummaryResponse>> GetAdminBookingsAsync(GetAdminBookingsQuery query, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
