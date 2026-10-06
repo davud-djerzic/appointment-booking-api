@@ -12,6 +12,7 @@ using AppointmentBooking.Api.Repositories.Customers;
 using AppointmentBooking.Api.Repositories.Employees;
 using AppointmentBooking.Api.Repositories.EmployeeServices;
 using AppointmentBooking.Api.Repositories.EmployeeWorkingHoursRepository;
+using AppointmentBooking.Api.Repositories.PasswordResetCodes;
 using AppointmentBooking.Api.Repositories.Salons;
 using AppointmentBooking.Api.Repositories.Services;
 using AppointmentBooking.Api.Repositories.UserAccounts;
@@ -20,9 +21,11 @@ using AppointmentBooking.Api.Services.Auth;
 using AppointmentBooking.Api.Services.BookedServices;
 using AppointmentBooking.Api.Services.Bookings;
 using AppointmentBooking.Api.Services.CurrentUser;
+using AppointmentBooking.Api.Services.Email;
 using AppointmentBooking.Api.Services.Employees;
 using AppointmentBooking.Api.Services.EmployeeServices;
 using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;
+using AppointmentBooking.Api.Services.PasswordReset;
 using AppointmentBooking.Api.Services.Profile;
 using AppointmentBooking.Api.Services.Salons;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -112,6 +115,7 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<RedisOptions>(builder.Configuration.GetSection(RedisOptions.SectionName));
+builder.Services.Configure<MailjetOptions>(builder.Configuration.GetSection(MailjetOptions.SectionName));
 
 builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
     NpgsqlDataSource.Create(connectionString));
@@ -137,6 +141,13 @@ builder.Services.AddHostedService<ExpiredAppointmnetCleanupService>();
 builder.Services.AddHostedService<AutomaticBookingCompletionService>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient<IEmailService, MailjetEmailService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.mailjet.com/");
+});
+builder.Services.AddScoped<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
+builder.Services.AddScoped<IPasswordResetCodeRepository, PasswordResetCodeRepository>();
+builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
 builder.Services.AddScoped<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
 builder.Services.AddScoped<IUserAccountRepository, UserAccountRepository>();
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();

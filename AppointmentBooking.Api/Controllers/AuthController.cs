@@ -2,13 +2,16 @@
 using AppointmentBooking.Api.DTOs.Auth.Response;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Services.Auth;
+using AppointmentBooking.Api.Services.PasswordReset;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 
 namespace AppointmentBooking.Api.Controllers
 {
     [ApiController]
     [Route("api/auth")]
-    public sealed class AuthController(IAuthService authService, IWebHostEnvironment environment) : ControllerBase
+    public sealed class AuthController(IAuthService authService, IPasswordResetService passwordResetService, IWebHostEnvironment environment) : ControllerBase
     {
         [HttpPost("register")]
         [ProducesResponseType<TokenResponse>(StatusCodes.Status201Created)]
@@ -150,6 +153,53 @@ namespace AppointmentBooking.Api.Controllers
                     SameSite = SameSiteMode.Lax,
                     Path = "/api/auth"
                 });
+
+            return NoContent();
+        }
+
+        [AllowAnonymous]
+        [HttpPost("forgot-password")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+        {
+            await passwordResetService.RequestResetAsync(
+                request.Email,
+                cancellationToken);
+
+            return Ok(new
+            {
+                message =
+                    "Ako račun sa unesenom email adresom postoji, "
+                    + "na tu adresu je poslan kod za promjenu lozinke."
+            });
+        }
+
+        [AllowAnonymous]
+        [HttpPost("verify-reset-code")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> VerifyResetCode(VerifyResetCodeRequest request, CancellationToken cancellationToken)
+        {
+            await passwordResetService.VerifyCodeAsync(
+                request.Email,
+                request.Code,
+                cancellationToken);
+
+            return NoContent();
+        }
+
+        [AllowAnonymous]
+        [HttpPost("reset-password")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> ResetPassword(ResetPasswordRequest request,CancellationToken cancellationToken)
+        {
+            await passwordResetService.ResetPasswordAsync(
+                request.Email,
+                request.Code,
+                request.NewPassword,
+                request.ConfirmPassword,
+                cancellationToken);
 
             return NoContent();
         }
