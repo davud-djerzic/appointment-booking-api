@@ -1,9 +1,9 @@
 ﻿namespace AppointmentBooking.Api.DTOs.Bookings.Response
 {
     public sealed record CustomerSummaryResponse(
-        long Id,
+        long? Id,
         string FirstName,
         string LastName,
-        string Email,
-        string Phone);
+        string? Email,
+        string? Phone);
 }

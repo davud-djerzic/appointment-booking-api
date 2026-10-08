@@ -3,6 +3,6 @@
     public sealed record BookingAvailabilityResponse(
     long EmployeeId,
     DateOnly Date,
-    int DurationMinutes,
+    int TotalDurationMinutes,
     IReadOnlyList<AvailableTimeSlotResponse> Slots);
 }

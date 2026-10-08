@@ -6,14 +6,14 @@ namespace AppointmentBooking.Api.Repositories.Bookings
     {
         public long Id { get; set; }
 
-        public long CustomerId { get; set; }
+        public long? CustomerId { get; set; }
 
         public string CustomerFirstName { get; set; } = null!;
 
         public string CustomerLastName { get; set; } = null!;
 
-        public string CustomerEmail { get; set; } = null!;
-        public string CustomerPhone { get; set; } = null!;
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhone { get; set; }
 
         public DateTimeOffset StartsAt { get; set; }
 

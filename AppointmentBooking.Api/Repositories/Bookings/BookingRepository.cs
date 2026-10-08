@@ -47,6 +47,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 INSERT INTO bookings
                 (
                     customer_id,
+                    customer_first_name,
+                    customer_last_name,
                     employee_id,
                     starts_at,
                     ends_at,
@@ -56,6 +58,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 VALUES
                 (
                     @CustomerId,
+                    @CustomerFirstName,
+                    @CustomerLastName,
                     @EmployeeId,
                     @StartsAt,
                     @EndsAt,
@@ -65,6 +69,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 RETURNING
                     id,
                     customer_id AS CustomerId,
+                    customer_first_name AS CustomerFirstName,
+                    customer_last_name AS CustomerLastName,
                     employee_id AS EmployeeId,
                     starts_at AS StartsAt,
                     ends_at AS EndsAt,
@@ -128,6 +134,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                             new
                             {
                                 booking.CustomerId,
+                                booking.CustomerFirstName,
+                                booking.CustomerLastName,
                                 booking.EmployeeId,
                                 booking.StartsAt,
                                 booking.EndsAt,
@@ -659,8 +667,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                     b.id AS Id,
                     b.customer_id AS CustomerId,
 
-                    ua.first_name AS CustomerFirstName,
-                    ua.last_name AS CustomerLastName,
+                    COALESCE(ua.first_name, b.customer_first_name) AS CustomerFirstName,
+                    COALESCE(ua.last_name, b.customer_last_name) AS CustomerLastName,
 
                     b.starts_at AS StartsAt,
                     b.ends_at AS EndsAt,
@@ -684,6 +692,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                     SELECT
                         id,
                         customer_id,
+                        customer_first_name,
+                        customer_last_name,
                         employee_id,
                         starts_at,
                         ends_at,
@@ -712,10 +722,10 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                     OFFSET @Offset
                 ) AS b
 
-                INNER JOIN customers AS c
+                LEFT JOIN customers AS c
                     ON c.id = b.customer_id
 
-                INNER JOIN user_accounts AS ua
+                LEFT JOIN user_accounts AS ua
                     ON ua.id = c.user_account_id
 
                 LEFT JOIN appointments AS a
@@ -724,6 +734,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 GROUP BY
                     b.id,
                     b.customer_id,
+                    b.customer_first_name,
+                    b.customer_last_name,
                     ua.first_name,
                     ua.last_name,
                     b.starts_at,
@@ -861,8 +873,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             b.id AS Id,
             b.customer_id AS CustomerId,
 
-            cua.first_name AS CustomerFirstName,
-            cua.last_name AS CustomerLastName,
+            COALESCE(cua.first_name, b.customer_first_name) AS CustomerFirstName,
+            COALESCE(cua.last_name, b.customer_last_name) AS CustomerLastName,
             cua.email AS CustomerEmail,
             c.phone AS CustomerPhone,
 
@@ -891,6 +903,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             SELECT
                 id,
                 customer_id,
+                customer_first_name,
+                customer_last_name,
                 employee_id,
                 starts_at,
                 ends_at,
@@ -934,10 +948,10 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             OFFSET @Offset
         ) AS b
 
-        INNER JOIN customers AS c
+        LEFT JOIN customers AS c
             ON c.id = b.customer_id
 
-        INNER JOIN user_accounts AS cua
+        LEFT JOIN user_accounts AS cua
             ON cua.id = c.user_account_id
 
         INNER JOIN employees AS e
@@ -952,6 +966,8 @@ namespace AppointmentBooking.Api.Repositories.Bookings
         GROUP BY
             b.id,
             b.customer_id,
+            b.customer_first_name,
+            b.customer_last_name,
             cua.first_name,
             cua.last_name,
             cua.email,
@@ -1121,6 +1137,115 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             return employees.ToList();
         }
 
+        public async Task<EmployeeBookingDetailsReadResult?>
+    GetEmployeeBookingDetailsAsync(
+        long? employeeId,
+        long bookingId,
+        CancellationToken cancellationToken)
+        {
+            const string sql = """
+        SELECT
+            b.id AS Id,
+            b.customer_id AS CustomerId,
+            b.employee_id AS EmployeeId,
+            b.starts_at AS StartsAt,
+            b.ends_at AS EndsAt,
+            b.status AS Status,
+            b.notes AS Notes,
+            b.created_at AS CreatedAt,
+            b.updated_at AS UpdatedAt,
+            b.completed_at AS CompletedAt,
+            b.completion_source AS CompletionSource,
+
+            COALESCE(ua.first_name, b.customer_first_name) AS CustomerFirstName,
+            COALESCE(ua.last_name, b.customer_last_name) AS CustomerLastName,
+            ua.email AS CustomerEmail,
+            c.phone AS CustomerPhone
+
+        FROM bookings AS b
+
+        LEFT JOIN customers AS c
+            ON c.id = b.customer_id
+
+        LEFT JOIN user_accounts AS ua
+            ON ua.id = c.user_account_id
+
+        WHERE b.id = @BookingId
+          AND (@EmployeeId IS NULL OR b.employee_id = @EmployeeId);
+
+        SELECT
+            id AS Id,
+            booking_id AS BookingId,
+            service_id AS ServiceId,
+            service_name_at_booking AS ServiceNameAtBooking,
+            duration_minutes_at_booking AS DurationMinutesAtBooking,
+            price_at_booking AS PriceAtBooking,
+            starts_at AS StartsAt,
+            ends_at AS EndsAt,
+            status AS Status,
+            created_at AS CreatedAt,
+            updated_at AS UpdatedAt
+
+        FROM appointments
+
+        WHERE booking_id = @BookingId
+
+        ORDER BY starts_at;
+        """;
+
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(
+                    cancellationToken);
+
+            using GridReader result =
+                await connection.QueryMultipleAsync(
+                    new CommandDefinition(
+                        sql,
+                        new
+                        {
+                            EmployeeId = employeeId,
+                            BookingId = bookingId
+                        },
+                        cancellationToken: cancellationToken));
+
+            EmployeeBookingDetailsRow? bookingRow =
+                await result.ReadSingleOrDefaultAsync<
+                    EmployeeBookingDetailsRow>();
+
+            if (bookingRow is null)
+                return null;
+
+            Appointment[] appointments =
+                (await result.ReadAsync<Appointment>())
+                    .ToArray();
+
+            Booking booking = new()
+            {
+                Id = bookingRow.Id,
+                CustomerId = bookingRow.CustomerId,
+                CustomerFirstName = bookingRow.CustomerFirstName,
+                CustomerLastName = bookingRow.CustomerLastName,
+                EmployeeId = bookingRow.EmployeeId,
+                StartsAt = bookingRow.StartsAt,
+                EndsAt = bookingRow.EndsAt,
+                Status = bookingRow.Status,
+                Notes = bookingRow.Notes,
+                CreatedAt = bookingRow.CreatedAt,
+                UpdatedAt = bookingRow.UpdatedAt,
+                CompletedAt = bookingRow.CompletedAt,
+                CompletionSource = bookingRow.CompletionSource
+            };
+
+            return new EmployeeBookingDetailsReadResult(
+                booking,
+                bookingRow.CustomerId,
+                bookingRow.CustomerFirstName,
+                bookingRow.CustomerLastName,
+                bookingRow.CustomerEmail,
+                bookingRow.CustomerPhone,
+                appointments);
+        }
+
         private sealed class BookingReadRow
         {
             public long Id { get; set; }
@@ -1176,6 +1301,39 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             public int TotalDurationMinutes { get; set; }
 
             public decimal TotalPrice { get; set; }
+        }
+
+        private sealed class EmployeeBookingDetailsRow
+        {
+            public long Id { get; set; }
+
+            public long? CustomerId { get; set; }
+
+            public long EmployeeId { get; set; }
+
+            public DateTimeOffset StartsAt { get; set; }
+
+            public DateTimeOffset EndsAt { get; set; }
+
+            public BookingStatus Status { get; set; }
+
+            public string? Notes { get; set; }
+
+            public DateTimeOffset CreatedAt { get; set; }
+
+            public DateTimeOffset? UpdatedAt { get; set; }
+
+            public DateTimeOffset? CompletedAt { get; set; }
+
+            public CompletionSource? CompletionSource { get; set; }
+
+            public string CustomerFirstName { get; set; } = null!;
+
+            public string CustomerLastName { get; set; } = null!;
+
+            public string? CustomerEmail { get; set; }
+
+            public string? CustomerPhone { get; set; }
         }
     }
 }

@@ -18,6 +18,7 @@ using AppointmentBooking.Api.Repositories.Services;
 using AppointmentBooking.Api.Repositories.UserAccounts;
 using AppointmentBooking.Api.Services.CurrentUser;
 using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;
+using AppointmentBooking.Api.Services.EmployeeAvailabilityBlocks;
 using Microsoft.AspNetCore.Routing.Matching;
 using Microsoft.Extensions.Options;
 using System.ComponentModel.DataAnnotations;
@@ -25,7 +26,7 @@ using System.ComponentModel.DataAnnotations;
 namespace AppointmentBooking.Api.Services.Bookings
 {
     public sealed class BookingService(IBookingRepository bookingRepository, IBookingHoldRepository bookingHoldRepository, IEmployeeRepository employeeRepository, IBookableServiceRepository bookableServiceRepository,
-        IEmployeeServiceRepository employeeServiceRepository, ICustomerRepository customerRepository, ICurrentUserService currentUser, IUserAccountRepository userAccountRepository,IEmployeeWorkingHoursService employeeWorkingHoursService, ILogger<BookingService> logger, IOptions<BookingOptions> options) : IBookingService
+        IEmployeeServiceRepository employeeServiceRepository, ICustomerRepository customerRepository, ICurrentUserService currentUser, IUserAccountRepository userAccountRepository,IEmployeeWorkingHoursService employeeWorkingHoursService, ILogger<BookingService> logger, IOptions<BookingOptions> options, IEmployeeUnavailabilityService employeeUnavailabilityService) : IBookingService
     {
         private readonly BookingOptions bookingOptions = options.Value;
         public async Task<BookingHoldResponse> CreateHoldAsync(CreateBookingRequest request, CancellationToken cancellationToken)
@@ -46,6 +47,19 @@ namespace AppointmentBooking.Api.Services.Bookings
             
             bool isWithinWorkingHours = await employeeWorkingHoursService.IsWithinWorkingHoursAsync(request.EmployeeId, requestedStartsAt, schedule.EndsAt, cancellationToken);
             if (!isWithinWorkingHours) throw new ConflictException("The selected time is outside the employee's working hours.");
+
+            IReadOnlyCollection<EmployeeUnavailability> unavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    request.EmployeeId,
+                    requestedStartsAt,
+                    schedule.EndsAt,
+                    cancellationToken);
+
+            if (unavailability.Count > 0)
+            {
+                throw new ConflictException(
+                    "The selected time overlaps an employee break or leave.");
+            }
 
             DateTimeOffset startsAt = requestedStartsAt.ToUniversalTime();
             DateTimeOffset endsAt = schedule.EndsAt.ToUniversalTime();
@@ -72,6 +86,21 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             bool holdCreated = await bookingHoldRepository.TryCreateAsync(hold, holdTtl, cancellationToken);
             if (!holdCreated) throw new ConflictException("The employee is already temporarily reserved for the selected time.");
+
+            IReadOnlyCollection<EmployeeUnavailability> currentUnavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    request.EmployeeId,
+                    hold.StartsAt,
+                    hold.EndsAt,
+                    cancellationToken);
+
+            if (currentUnavailability.Count > 0)
+            {
+                await DeleteHoldSafelyAsync(hold);
+
+                throw new ConflictException(
+                    "The selected time overlaps an employee break or leave.");
+            }
 
             BookingHoldServiceResponse[] serviceResponses =
                 hold.Services
@@ -118,6 +147,21 @@ namespace AppointmentBooking.Api.Services.Bookings
             if (hold.CustomerId != customer.Id) throw new UnauthorizedException("The booking hold does not belong to the current customer.");
 
             await GetBookableEmployeeAsync(hold.EmployeeId, cancellationToken);
+
+            IReadOnlyCollection<EmployeeUnavailability> unavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    hold.EmployeeId,
+                    hold.StartsAt,
+                    hold.EndsAt,
+                    cancellationToken);
+
+            if (unavailability.Count > 0)
+            {
+                await DeleteHoldSafelyAsync(hold);
+
+                throw new ConflictException(
+                    "The held time overlaps an employee break or leave.");
+            }
 
             List<Appointment> appointments =
                 hold.Services
@@ -315,6 +359,48 @@ namespace AppointmentBooking.Api.Services.Bookings
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (currentUser.Role == UserRole.Admin)
+            {
+                PagedResponse<AdminBookingSummaryResponse> adminBookings =
+                    await GetAdminBookingsAsync(
+                        new GetAdminBookingsQuery
+                        {
+                            From = query.From.HasValue
+                                ? DateOnly.FromDateTime(query.From.Value.DateTime)
+                                : null,
+                            To = query.To.HasValue
+                                ? DateOnly.FromDateTime(query.To.Value.DateTime)
+                                : null,
+                            Status = query.Status,
+                            Page = query.Page,
+                            PageSize = query.PageSize
+                        },
+                        cancellationToken);
+
+                EmployeeBookingSummaryResponse[] adminItems =
+                    adminBookings.Items
+                        .Select(booking =>
+                            new EmployeeBookingSummaryResponse(
+                                booking.Id,
+                                booking.Customer,
+                                booking.StartsAt,
+                                booking.EndsAt,
+                                booking.TotalDurationMinutes,
+                                booking.TotalPrice,
+                                booking.Status,
+                                booking.Notes,
+                                booking.CreatedAt))
+                        .ToArray();
+
+                return new PagedResponse<EmployeeBookingSummaryResponse>
+                {
+                    Items = adminItems,
+                    Page = adminBookings.Page,
+                    PageSize = adminBookings.PageSize,
+                    TotalCount = adminBookings.TotalCount
+                };
+            }
+
             Employee employee = await GetActiveEmployeeAsync(cancellationToken);
 
             BookingSearchCriteria criteria = new()
@@ -357,6 +443,189 @@ namespace AppointmentBooking.Api.Services.Bookings
             };
         }
 
+        public async Task<EmployeeBookingDetailsResponse> GetEmployeeBookingByIdAsync(long bookingId, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Employee? employee = currentUser.Role == UserRole.Admin
+                ? null
+                : await GetActiveEmployeeAsync(cancellationToken);
+
+            EmployeeBookingDetailsReadResult? result =
+                await bookingRepository.GetEmployeeBookingDetailsAsync(
+                    employee?.Id,
+                    bookingId,
+                    cancellationToken);
+            if (result is null) throw new NotFoundException($"Booking with ID '{bookingId}' was not found.");
+
+            int totalDurationMinutes = result.Appointments.Sum(appointment => appointment.DurationMinutesAtBooking);
+            decimal totalPrice = result.Appointments.Sum(appointment => appointment.PriceAtBooking);
+
+            AppointmentResponse[] appointments =
+                result.Appointments
+                    .Select(appointment =>
+                        new AppointmentResponse(
+                            appointment.Id,
+                            appointment.BookingId,
+                            appointment.ServiceId,
+                            appointment.ServiceNameAtBooking,
+                            appointment.DurationMinutesAtBooking,
+                            appointment.PriceAtBooking,
+                            appointment.StartsAt,
+                            appointment.EndsAt,
+                            appointment.Status))
+                    .ToArray();
+
+            return new EmployeeBookingDetailsResponse(
+                result.Booking.Id,
+                new CustomerSummaryResponse(
+                    result.CustomerId,
+                    result.CustomerFirstName,
+                    result.CustomerLastName,
+                    result.CustomerEmail,
+                    result.CustomerPhone),
+                result.Booking.StartsAt,
+                result.Booking.EndsAt,
+                totalDurationMinutes,
+                totalPrice,
+                result.Booking.Status,
+                result.Booking.Notes,
+                result.Booking.CreatedAt,
+                result.Booking.CompletedAt,
+                result.Booking.CompletionSource,
+                appointments);
+        }
+
+        public async Task<EmployeeBookingDetailsResponse> CreateStaffBookingAsync(
+            CreateStaffBookingRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(request.CustomerFirstName) ||
+                string.IsNullOrWhiteSpace(request.CustomerLastName))
+            {
+                throw new ValidationException("Customer first and last name are required.");
+            }
+
+            Employee employee;
+            if (currentUser.Role == UserRole.Employee)
+            {
+                employee = await GetActiveEmployeeAsync(cancellationToken);
+
+                if (request.EmployeeId.HasValue && request.EmployeeId.Value != employee.Id)
+                {
+                    throw new UnauthorizedException("An employee can only create bookings for themselves.");
+                }
+            }
+            else if (currentUser.Role == UserRole.Admin)
+            {
+                if (!request.EmployeeId.HasValue || request.EmployeeId.Value <= 0)
+                {
+                    throw new ValidationException("An employee must be selected.");
+                }
+
+                EmployeeBookingContext employeeContext = await GetBookableEmployeeAsync(
+                    request.EmployeeId.Value,
+                    cancellationToken);
+                employee = employeeContext.Employee;
+            }
+            else
+            {
+                throw new UnauthorizedException("The current user is not authorized to create staff bookings.");
+            }
+
+            DateTimeOffset startsAt = request.StartsAt.ToUniversalTime();
+            if (startsAt <= DateTimeOffset.UtcNow)
+            {
+                throw new ValidationException("Booking start time must be in the future.");
+            }
+
+            long[] serviceIds = ValidateServiceIds(request.ServiceIds);
+            HoldSchedule schedule = await BuildHoldScheduleAsync(
+                employee.Id,
+                startsAt,
+                serviceIds,
+                cancellationToken);
+
+            if (!await employeeWorkingHoursService.IsWithinWorkingHoursAsync(
+                    employee.Id,
+                    startsAt,
+                    schedule.EndsAt,
+                    cancellationToken))
+            {
+                throw new ConflictException("The selected time is outside the employee's working hours.");
+            }
+
+            IReadOnlyCollection<EmployeeUnavailability> unavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    employee.Id,
+                    startsAt,
+                    schedule.EndsAt,
+                    cancellationToken);
+
+            if (unavailability.Count > 0)
+            {
+                throw new ConflictException("The selected time overlaps an employee break or leave.");
+            }
+
+            if (await bookingRepository.HasScheduledOverlapAsync(
+                    employee.Id,
+                    startsAt,
+                    schedule.EndsAt,
+                    cancellationToken))
+            {
+                throw new ConflictException("The employee is already booked for the selected time.");
+            }
+
+            IReadOnlyList<BookingHold> activeHolds =
+                await bookingHoldRepository.GetActiveForEmployeeAsync(
+                    employee.Id,
+                    startsAt,
+                    schedule.EndsAt,
+                    cancellationToken);
+
+            if (activeHolds.Any(hold => startsAt < hold.EndsAt && schedule.EndsAt > hold.StartsAt))
+            {
+                throw new ConflictException("The selected time is temporarily reserved by a customer.");
+            }
+
+            Appointment[] appointments = schedule.Services
+                .Select(service => new Appointment
+                {
+                    ServiceId = service.ServiceId,
+                    ServiceNameAtBooking = service.Name,
+                    DurationMinutesAtBooking = service.DurationMinutes,
+                    PriceAtBooking = service.Price,
+                    StartsAt = service.StartsAt,
+                    EndsAt = service.EndsAt,
+                    Status = AppointmentStatus.Scheduled
+                })
+                .ToArray();
+
+            Booking booking = new()
+            {
+                CustomerFirstName = request.CustomerFirstName.Trim(),
+                CustomerLastName = request.CustomerLastName.Trim(),
+                EmployeeId = employee.Id,
+                StartsAt = startsAt,
+                EndsAt = schedule.EndsAt.ToUniversalTime(),
+                Status = BookingStatus.Scheduled,
+                Notes = string.IsNullOrWhiteSpace(request.Notes)
+                    ? null
+                    : request.Notes.Trim()
+            };
+
+            BookingCreationResult created = await bookingRepository.CreateAsync(
+                booking,
+                appointments,
+                cancellationToken);
+
+            return await GetEmployeeBookingByIdAsync(
+                created.Booking.Id,
+                cancellationToken);
+        }
+
         public async Task<BookingAvailabilityResponse> GetAvailabilityAsync(GetBookingAvailabilityQuery query, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -390,6 +659,12 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             IReadOnlyList<BookingTimeRange> scheduledBookings = await bookingRepository.GetScheduledTimeRangesAsync(employeeId, dayStart, dayEnd, cancellationToken);
             IReadOnlyList<BookingHold> activeHolds = await bookingHoldRepository.GetActiveForEmployeeAsync(employeeId, dayStart, dayEnd, cancellationToken);
+            IReadOnlyCollection<EmployeeUnavailability> unavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    employeeId,
+                    dayStart,
+                    dayEnd,
+                    cancellationToken);
 
             List<AvailableTimeSlotResponse> availableSlots = new();
             TimeSpan slotInterval = TimeSpan.FromMinutes(bookingOptions.AvailabilitySlotIntervalMinutes);
@@ -415,6 +690,16 @@ namespace AppointmentBooking.Api.Services.Bookings
                     }
 
                     DateTimeOffset candidateEnd = candidateStart.AddMinutes(totalDurationMinutes);
+                    bool overlapsUnavailability = unavailability.Any(block =>
+                        candidateStart < block.EndsAt &&
+                        candidateEnd > block.StartsAt);
+
+                    if (overlapsUnavailability)
+                    {
+                        candidateStart = candidateStart.Add(slotInterval);
+                        continue;
+                    }
+
                     bool hasScheduledOverlap = scheduledBookings.Any(booking => candidateStart < booking.EndsAt && candidateEnd > booking.StartsAt);
 
                     if (!hasScheduledOverlap)
@@ -840,7 +1125,8 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             return new BookingResponse(
                 booking.Id,
-                booking.CustomerId,
+                booking.CustomerId ?? throw new InvalidOperationException(
+                    "Customer bookings must have a customer ID."),
                 booking.EmployeeId,
                 booking.StartsAt,
                 booking.EndsAt,

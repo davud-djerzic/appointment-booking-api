@@ -23,6 +23,10 @@ namespace AppointmentBooking.Api.Services.Bookings
 
         Task<PagedResponse<EmployeeBookingSummaryResponse>> GetEmployeeBookingsAsync(GetBookingsQuery query, CancellationToken cancellationToken);
 
+        Task<EmployeeBookingDetailsResponse> GetEmployeeBookingByIdAsync(long bookingId, CancellationToken cancellationToken);
+
+        Task<EmployeeBookingDetailsResponse> CreateStaffBookingAsync(CreateStaffBookingRequest request, CancellationToken cancellationToken);
+
         Task<BookingAvailabilityResponse> GetAvailabilityAsync(GetBookingAvailabilityQuery query, CancellationToken cancellationToken);
 
         Task<PagedResponse<AdminBookingSummaryResponse>> GetAdminBookingsAsync(GetAdminBookingsQuery query, CancellationToken cancellationToken);

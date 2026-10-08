@@ -6,7 +6,11 @@ namespace AppointmentBooking.Api.Models
     {
         public long Id { get; init; }
 
-        public long CustomerId { get; init; }
+        public long? CustomerId { get; init; }
+
+        public string? CustomerFirstName { get; init; }
+
+        public string? CustomerLastName { get; init; }
 
         public long EmployeeId { get; init; }
 

@@ -26,5 +26,7 @@ namespace AppointmentBooking.Api.Repositories.Bookings
         Task<PagedResult<AdminBookingListItem>> GetAdminBookingsAsync(AdminBookingSearchCriteria criteria, CancellationToken cancellationToken);
 
         Task<IReadOnlyList<BookableEmployeeResponse>> GetBookableEmployeesAsync(IReadOnlyCollection<long> serviceIds, CancellationToken cancellationToken);
+
+        Task<EmployeeBookingDetailsReadResult?> GetEmployeeBookingDetailsAsync(long? employeeId, long bookingId, CancellationToken cancellationToken);
     }
 }

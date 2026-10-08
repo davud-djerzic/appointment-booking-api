@@ -151,10 +151,10 @@ Docker Compose starts:
 - PostgreSQL
 - Appointment Booking API
 
-The PostgreSQL container is initialized using the database scripts:
-
-    AppointmentBooking.Api/Database/001_schema.sql
-    AppointmentBooking.Api/Database/002_seed.sql
+On first initialization, Docker Compose applies the numbered SQL scripts mounted from
+`AppointmentBooking.Api/Database/` in order. Existing PostgreSQL volumes are not
+reinitialized automatically when a new script is added; apply new migrations to an
+existing database separately.
 
 The API is available at:
 
@@ -354,12 +354,7 @@ Database initialization scripts are located in:
 
     AppointmentBooking.Api/Database/
 
-The scripts are:
-
-    001_schema.sql
-    002_seed.sql
-
-When PostgreSQL is started through Docker Compose for the first time, these scripts are used to initialize and seed the database.
+Docker Compose uses these scripts to initialize and seed a new database volume.
 
 ## Testing
 

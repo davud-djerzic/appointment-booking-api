@@ -111,7 +111,7 @@ namespace AppointmentBooking.Api.Controllers
             return NoContent();
         }
 
-        [Authorize(Roles = "Employee")]
+        [Authorize(Roles = "Employee, Admin")]
         [HttpGet("employee")]
         [ProducesResponseType<PagedResponse<EmployeeBookingSummaryResponse>>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -122,6 +122,39 @@ namespace AppointmentBooking.Api.Controllers
             PagedResponse<EmployeeBookingSummaryResponse> result = await bookingService.GetEmployeeBookingsAsync(query,cancellationToken);
 
             return Ok(result);
+        }
+
+        [Authorize(Roles = "Employee, Admin")]
+        [HttpGet("employee/{id:long:min(1)}")]
+        [ProducesResponseType<EmployeeBookingDetailsResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<EmployeeBookingDetailsResponse>> GetEmployeeBookingById(long id, CancellationToken cancellationToken)
+        {
+            EmployeeBookingDetailsResponse booking = await bookingService.GetEmployeeBookingByIdAsync(id, cancellationToken);
+
+            return Ok(booking);
+        }
+
+        [Authorize(Roles = "Employee, Admin")]
+        [HttpPost("staff")]
+        [ProducesResponseType<EmployeeBookingDetailsResponse>(StatusCodes.Status201Created)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<EmployeeBookingDetailsResponse>> CreateStaffBooking(
+            CreateStaffBookingRequest request,
+            CancellationToken cancellationToken)
+        {
+            EmployeeBookingDetailsResponse booking =
+                await bookingService.CreateStaffBookingAsync(
+                    request,
+                    cancellationToken);
+
+            return StatusCode(StatusCodes.Status201Created, booking);
         }
 
         [HttpGet("admin")]
