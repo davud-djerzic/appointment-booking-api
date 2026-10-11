@@ -487,6 +487,109 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             }
         }
 
+        public async Task<bool> CancelAndBlockAsEmployeeAsync(
+            long bookingId,
+            long employeeId,
+            string note,
+            CancellationToken cancellationToken)
+        {
+            const string cancelBookingSql = """
+                UPDATE bookings
+                SET
+                    status = 'cancelled',
+                    updated_at = NOW()
+                WHERE id = @BookingId
+                  AND employee_id = @EmployeeId
+                  AND status = 'scheduled'
+                  AND starts_at > NOW()
+                RETURNING
+                    employee_id AS EmployeeId,
+                    starts_at AS StartsAt,
+                    ends_at AS EndsAt;
+                """;
+
+            const string cancelAppointmentsSql = """
+                UPDATE appointments
+                SET
+                    status = 'cancelled',
+                    updated_at = NOW()
+                WHERE booking_id = @BookingId
+                  AND status = 'scheduled';
+                """;
+
+            const string createBreakSql = """
+                INSERT INTO employee_unavailability
+                (
+                    employee_id,
+                    block_type,
+                    starts_at,
+                    ends_at,
+                    is_all_day,
+                    note
+                )
+                VALUES
+                (
+                    @EmployeeId,
+                    @BreakType,
+                    @StartsAt,
+                    @EndsAt,
+                    FALSE,
+                    @Note
+                );
+                """;
+
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlTransaction transaction =
+                await connection.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                BookingCancellationBlock? cancelledBooking =
+                    await connection.QuerySingleOrDefaultAsync<BookingCancellationBlock>(
+                        new CommandDefinition(
+                            cancelBookingSql,
+                            new { BookingId = bookingId, EmployeeId = employeeId },
+                            transaction,
+                            cancellationToken: cancellationToken));
+
+                if (cancelledBooking is null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return false;
+                }
+
+                await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        cancelAppointmentsSql,
+                        new { BookingId = bookingId },
+                        transaction,
+                        cancellationToken: cancellationToken));
+
+                await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        createBreakSql,
+                        new
+                        {
+                            cancelledBooking.EmployeeId,
+                            BreakType = (short)EmployeeUnavailabilityType.Break,
+                            cancelledBooking.StartsAt,
+                            cancelledBooking.EndsAt,
+                            Note = note
+                        },
+                        transaction,
+                        cancellationToken: cancellationToken));
+
+                await transaction.CommitAsync(cancellationToken);
+                return true;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
         public async Task<bool> CompleteAsync(long bookingId, CancellationToken cancellationToken)
         {
             const string completeBookingSql = """
@@ -1301,6 +1404,15 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             public int TotalDurationMinutes { get; set; }
 
             public decimal TotalPrice { get; set; }
+        }
+
+        private sealed class BookingCancellationBlock
+        {
+            public long EmployeeId { get; set; }
+
+            public DateTimeOffset StartsAt { get; set; }
+
+            public DateTimeOffset EndsAt { get; set; }
         }
 
         private sealed class EmployeeBookingDetailsRow

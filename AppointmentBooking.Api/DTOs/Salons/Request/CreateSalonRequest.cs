@@ -16,6 +16,9 @@ namespace AppointmentBooking.Api.DTOs.Salons.Request
         [StringLength(100, MinimumLength = 2)]
         public required string City { get; init; }
 
+        [StringLength(30, MinimumLength = 2)]
+        public string? Phone { get; init; }
+
         [Url]
         [StringLength(255)]
         public string? InstagramUrl { get; init; }

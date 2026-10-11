@@ -15,6 +15,12 @@ namespace AppointmentBooking.Api.Repositories.Bookings
 
         Task<bool> CancelAsync(long bookingId, CancellationToken cancellationToken);
 
+        Task<bool> CancelAndBlockAsEmployeeAsync(
+            long bookingId,
+            long employeeId,
+            string note,
+            CancellationToken cancellationToken);
+
         Task<bool> CompleteAsync(long bookingId, CancellationToken cancellationToken);
 
         Task<int> CompleteExpiredAutomaticallyAsync(DateTimeOffset completedAt, CancellationToken cancellationToken);

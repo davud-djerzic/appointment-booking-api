@@ -13,5 +13,12 @@ namespace AppointmentBooking.Api.Repositories.EmployeeWorkingHoursRepository
 
         Task DeleteAsync(long employeeId, long workingHoursId, CancellationToken cancellationToken);
 
+        Task<IReadOnlyCollection<EmployeeWorkingHours>> ApplyRecurringBreakAsync(
+            long employeeId,
+            AppointmentBooking.Api.Models.Enums.WeekDay dayOfWeek,
+            TimeOnly startsAt,
+            TimeOnly endsAt,
+            CancellationToken cancellationToken);
+
     }
 }

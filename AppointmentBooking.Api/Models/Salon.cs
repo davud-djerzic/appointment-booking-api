@@ -10,6 +10,8 @@
 
         public string City { get; init; } = string.Empty;
 
+        public string? Phone { get; init; } 
+
         public string? InstagramUrl { get; init; }
 
         public string? FacebookUrl { get; init; }

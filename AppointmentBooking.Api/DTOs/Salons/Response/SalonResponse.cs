@@ -5,6 +5,7 @@
         string Name,
         string Address,
         string City,
+        string? Phone,
         string? InstagramUrl,
         string? FacebookUrl,
         decimal? Latitude,

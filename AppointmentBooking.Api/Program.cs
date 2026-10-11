@@ -162,6 +162,7 @@ builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IEmployeeWorkingHoursRepository, EmployeeWorkingHoursRepository>();
 builder.Services.AddScoped<IEmployeeWorkingHoursService, EmployeeWorkingHoursService>();
+builder.Services.AddScoped<IEmployeeRecurringBreakService, EmployeeRecurringBreakService>();
 builder.Services.AddScoped<IEmployeeUnavailabilityRepository, EmployeeUnavailabilityRepository>();
 builder.Services.AddScoped<IEmployeeUnavailabilityService, EmployeeUnavailabilityService>();
 builder.Services.AddScoped<IAccessTokenService, AccessTokenService>();

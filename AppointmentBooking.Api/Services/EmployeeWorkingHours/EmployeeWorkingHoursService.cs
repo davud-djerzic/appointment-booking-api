@@ -133,6 +133,8 @@ namespace AppointmentBooking.Api.Services.EmployeeWorkingHoursService
 
             if (localStartsAt.Date != localEndsAt.Date) return false;
 
+            if (localStartsAt.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) return false;
+
             IReadOnlyCollection<EmployeeWorkingHours> workingHours = await employeeWorkingHoursRepository.GetByEmployeeIdAsync(employeeId, cancellationToken);
 
             TimeOnly bookingStartsAt = TimeOnly.FromDateTime(localStartsAt);

@@ -98,6 +98,24 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [Authorize(Roles = "Employee,Admin")]
+        [HttpPost("{id:long:min(1)}/cancel-and-block")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> CancelStaffBookingAndBlock(
+            long id,
+            CancellationToken cancellationToken)
+        {
+            await bookingService.CancelStaffBookingAndBlockAsync(
+                id,
+                cancellationToken);
+
+            return NoContent();
+        }
+
+        [Authorize(Roles = "Employee,Admin")]
         [HttpPost("{id:long:min(1)}/complete")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
@@ -179,6 +197,21 @@ namespace AppointmentBooking.Api.Controllers
         public async Task<ActionResult<BookingAvailabilityResponse>> GetAvailabilityAsync([FromQuery] GetBookingAvailabilityQuery query,CancellationToken cancellationToken)
         {
             BookingAvailabilityResponse result = await bookingService.GetAvailabilityAsync(query, cancellationToken);
+
+            return Ok(result);
+        }
+
+        [Authorize]
+        [HttpGet("calendar-days")]
+        [ProducesResponseType<BookingCalendarDaysResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<BookingCalendarDaysResponse>> GetCalendarDaysAsync(
+            [FromQuery] GetBookingCalendarDaysQuery query,
+            CancellationToken cancellationToken)
+        {
+            BookingCalendarDaysResponse result =
+                await bookingService.GetCalendarDaysAsync(query, cancellationToken);
 
             return Ok(result);
         }

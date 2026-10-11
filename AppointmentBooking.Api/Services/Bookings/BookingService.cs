@@ -641,6 +641,11 @@ namespace AppointmentBooking.Api.Services.Bookings
             await GetBookableEmployeeAsync(employeeId, cancellationToken);
 
             int totalDurationMinutes = await GetTotalServiceDurationAsync(employeeId, serviceIds, cancellationToken);
+
+            if (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            {
+                return new BookingAvailabilityResponse(employeeId, date, totalDurationMinutes, Array.Empty<AvailableTimeSlotResponse>());
+            }
             
             IReadOnlyCollection<EmployeeWorkingHoursResponse> workingHours = await employeeWorkingHoursService.GetByEmployeeIdAsync(employeeId,cancellationToken);
 
@@ -716,6 +721,117 @@ namespace AppointmentBooking.Api.Services.Bookings
             }
 
             return new BookingAvailabilityResponse(employeeId, date, totalDurationMinutes, availableSlots);
+        }
+
+        public async Task<BookingCalendarDaysResponse> GetCalendarDaysAsync(
+            GetBookingCalendarDaysQuery query,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await GetBookableEmployeeAsync(query.EmployeeId, cancellationToken);
+
+            IReadOnlyCollection<EmployeeWorkingHoursResponse> workingHours =
+                await employeeWorkingHoursService.GetByEmployeeIdAsync(
+                    query.EmployeeId,
+                    cancellationToken);
+
+            DateOnly today = DateOnly.FromDateTime(DateTime.Today);
+            HashSet<WeekDay> configuredWeekdays = workingHours
+                .Select(item => item.DayOfWeek)
+                .ToHashSet();
+
+            DateOnly preliminaryFrom = FindWorkingDateBoundary(today, configuredWeekdays, -1, 30);
+            DateOnly preliminaryTo = FindWorkingDateBoundary(today, configuredWeekdays, 1, 60);
+
+            DateOnly scanFrom = preliminaryFrom.AddDays(-365);
+            DateOnly scanTo = preliminaryTo.AddDays(365);
+            DateTime localStart = scanFrom.ToDateTime(TimeOnly.MinValue);
+            DateTime localEnd = scanTo.AddDays(1).ToDateTime(TimeOnly.MinValue);
+            DateTimeOffset rangeStart = new(localStart, TimeZoneInfo.Local.GetUtcOffset(localStart));
+            DateTimeOffset rangeEnd = new(localEnd, TimeZoneInfo.Local.GetUtcOffset(localEnd));
+
+            IReadOnlyCollection<EmployeeUnavailability> unavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    query.EmployeeId,
+                    rangeStart,
+                    rangeEnd,
+                    cancellationToken);
+
+            HashSet<DateOnly> vacationDates = [];
+            foreach (EmployeeUnavailability vacation in unavailability.Where(
+                item => item.Type == EmployeeUnavailabilityType.Vacation && item.IsAllDay))
+            {
+                DateOnly vacationStart = DateOnly.FromDateTime(
+                    TimeZoneInfo.ConvertTime(vacation.StartsAt, TimeZoneInfo.Local).DateTime);
+                DateOnly vacationEndExclusive = DateOnly.FromDateTime(
+                    TimeZoneInfo.ConvertTime(vacation.EndsAt, TimeZoneInfo.Local).DateTime);
+
+                for (DateOnly vacationDate = vacationStart;
+                    vacationDate < vacationEndExclusive;
+                    vacationDate = vacationDate.AddDays(1))
+                {
+                    vacationDates.Add(vacationDate);
+                }
+            }
+
+            List<DateOnly> candidateDates = [];
+            for (DateOnly date = scanFrom; date <= scanTo; date = date.AddDays(1))
+            {
+                if (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+                {
+                    continue;
+                }
+
+                WeekDay dayOfWeek = GetWeekDay(date.DayOfWeek);
+                if (configuredWeekdays.Contains(dayOfWeek) && !vacationDates.Contains(date))
+                {
+                    candidateDates.Add(date);
+                }
+            }
+
+            List<DateOnly> dates = candidateDates
+                .Where(date => date < today)
+                .TakeLast(30)
+                .Concat(candidateDates.Where(date => date >= today).Take(60))
+                .Order()
+                .ToList();
+
+            DateOnly responseFrom = dates.Count > 0 ? dates[0] : today;
+            DateOnly responseTo = dates.Count > 0 ? dates[^1] : today;
+
+            return new BookingCalendarDaysResponse(
+                query.EmployeeId,
+                responseFrom,
+                responseTo,
+                dates);
+        }
+
+        private static DateOnly FindWorkingDateBoundary(
+            DateOnly today,
+            IReadOnlySet<WeekDay> configuredWeekdays,
+            int direction,
+            int count)
+        {
+            DateOnly date = direction > 0 ? today.AddDays(-1) : today;
+            int found = 0;
+            int maxCalendarDays = 366 * 2;
+
+            for (int attempt = 0; attempt < maxCalendarDays; attempt++)
+            {
+                date = date.AddDays(direction);
+                if (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+                {
+                    continue;
+                }
+
+                if (configuredWeekdays.Contains(GetWeekDay(date.DayOfWeek)) && ++found == count)
+                {
+                    return date;
+                }
+            }
+
+            return date;
         }
 
         public async Task<IReadOnlyList<BookableEmployeeResponse>> GetBookableEmployeesAsync(IReadOnlyCollection<long> serviceIds, CancellationToken cancellationToken)
@@ -936,8 +1052,19 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             if (result.Booking.EmployeeId != employee.Id) throw new NotFoundException($"Booking with ID '{bookingId}' was not found.");
 
-            ValidateCanBeCancelled(result.Booking, allowAutomaticCompleted: true);
-            await CancelBookingInternalAsync(bookingId, cancellationToken);
+            ValidateCanBeCancelledByEmployee(result.Booking);
+
+            bool cancelled = await bookingRepository.CancelAndBlockAsEmployeeAsync(
+                bookingId,
+                employee.Id,
+                $"Pauza nakon otkazanog termina #{bookingId}.",
+                cancellationToken);
+
+            if (!cancelled)
+            {
+                throw new ConflictException(
+                    "The booking could not be cancelled because its state changed or it is no longer in the future.");
+            }
         }
 
         private async Task CancelBookingAsAdminAsync(long bookingId, CancellationToken cancellationToken)
@@ -1025,6 +1152,79 @@ namespace AppointmentBooking.Api.Services.Bookings
             
 
             throw new ConflictException("The booking cannot be cancelled in its current state.");
+        }
+
+        private static void ValidateCanBeCancelledByEmployee(Booking booking)
+        {
+            if (booking.Status == BookingStatus.Cancelled)
+            {
+                throw new ConflictException("The booking is already cancelled.");
+            }
+
+            if (booking.Status != BookingStatus.Scheduled)
+            {
+                throw new ConflictException("Employees can only cancel scheduled bookings.");
+            }
+
+            if (booking.StartsAt <= DateTimeOffset.UtcNow)
+            {
+                throw new ConflictException("Employees can only cancel bookings that have not started yet.");
+            }
+        }
+
+        public async Task CancelStaffBookingAndBlockAsync(
+            long bookingId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            long employeeId;
+            if (currentUser.Role == UserRole.Employee)
+            {
+                Employee employee = await GetActiveEmployeeAsync(cancellationToken);
+                employeeId = employee.Id;
+            }
+            else if (currentUser.Role == UserRole.Admin)
+            {
+                BookingReadResult? result = await bookingRepository.GetByIdAsync(
+                    bookingId,
+                    cancellationToken);
+
+                if (result is null)
+                {
+                    throw new NotFoundException($"Booking with ID '{bookingId}' was not found.");
+                }
+
+                employeeId = result.Booking.EmployeeId;
+            }
+            else
+            {
+                throw new UnauthorizedException(
+                    "Only employees and admins can cancel a staff booking and block its time.");
+            }
+
+            BookingReadResult? booking = await bookingRepository.GetByIdAsync(
+                bookingId,
+                cancellationToken);
+
+            if (booking is null || booking.Booking.EmployeeId != employeeId)
+            {
+                throw new NotFoundException($"Booking with ID '{bookingId}' was not found.");
+            }
+
+            ValidateCanBeCancelledByEmployee(booking.Booking);
+
+            bool cancelled = await bookingRepository.CancelAndBlockAsEmployeeAsync(
+                bookingId,
+                employeeId,
+                $"Pauza nakon otkazanog termina #{bookingId}.",
+                cancellationToken);
+
+            if (!cancelled)
+            {
+                throw new ConflictException(
+                    "The booking could not be cancelled because its state changed or it is no longer in the future.");
+            }
         }
 
         private async Task CancelBookingInternalAsync(long bookingId, CancellationToken cancellationToken)
