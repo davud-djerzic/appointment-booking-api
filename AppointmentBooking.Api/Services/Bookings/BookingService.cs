@@ -1054,17 +1054,7 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             ValidateCanBeCancelledByEmployee(result.Booking);
 
-            bool cancelled = await bookingRepository.CancelAndBlockAsEmployeeAsync(
-                bookingId,
-                employee.Id,
-                $"Pauza nakon otkazanog termina #{bookingId}.",
-                cancellationToken);
-
-            if (!cancelled)
-            {
-                throw new ConflictException(
-                    "The booking could not be cancelled because its state changed or it is no longer in the future.");
-            }
+            await CancelBookingInternalAsync(bookingId, cancellationToken);
         }
 
         private async Task CancelBookingAsAdminAsync(long bookingId, CancellationToken cancellationToken)
