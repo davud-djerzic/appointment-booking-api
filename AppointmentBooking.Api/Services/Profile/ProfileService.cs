@@ -2,6 +2,7 @@
 using AppointmentBooking.Api.DTOs.Profile.Response;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using AppointmentBooking.Api.Repositories.Auth;
 using AppointmentBooking.Api.Repositories.Customers;
 using AppointmentBooking.Api.Repositories.UserAccounts;
@@ -114,6 +115,60 @@ namespace AppointmentBooking.Api.Services.Profile
             await authRepository.RevokeAllRefreshTokensAsync(
                 currentUser.UserAccountId,
                 cancellationToken);
+        }
+
+        public async Task DeleteMyAccountAsync(
+            DeleteMyAccountRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            UserAccount? userAccount =
+                await userAccountRepository.GetByIdAsync(
+                    currentUser.UserAccountId,
+                    cancellationToken);
+
+            if (userAccount is null ||
+                !userAccount.IsActive ||
+                userAccount.Role != UserRole.Customer)
+            {
+                throw new UnauthorizedException(
+                    "The customer account is inactive or could not be found.");
+            }
+
+            PasswordVerificationResult passwordResult =
+                passwordHasher.VerifyHashedPassword(
+                    userAccount,
+                    userAccount.PasswordHash,
+                    request.CurrentPassword);
+
+            if (passwordResult == PasswordVerificationResult.Failed)
+            {
+                throw new ValidationException(
+                    "The current password is incorrect.");
+            }
+
+            Customer? customer =
+                await customerRepository.GetActiveByUserAccountIdAsync(
+                    userAccount.Id,
+                    cancellationToken);
+
+            if (customer is null)
+            {
+                throw new UnauthorizedException(
+                    "The customer profile is inactive or could not be found.");
+            }
+
+            bool deleted = await customerRepository.DeleteAccountAsync(
+                userAccount.Id,
+                cancellationToken);
+
+            if (!deleted)
+            {
+                throw new UnauthorizedException(
+                    "The customer account is inactive or could not be found.");
+            }
+
         }
     }
 }

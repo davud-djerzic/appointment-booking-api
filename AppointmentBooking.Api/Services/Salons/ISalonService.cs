@@ -8,5 +8,6 @@ namespace AppointmentBooking.Api.Services.Salons
         Task<SalonResponse> CreateAsync(CreateSalonRequest request, CancellationToken cancellationToken);
 
         Task<SalonResponse> GetByIdAsync(long salonId, CancellationToken cancellationToken);
+        Task<SalonResponse> GetCurrentAsync(CancellationToken cancellationToken);
     }
 }

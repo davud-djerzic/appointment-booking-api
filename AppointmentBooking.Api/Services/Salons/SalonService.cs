@@ -66,6 +66,22 @@ namespace AppointmentBooking.Api.Services.Salons
             return MapToResponse(salonWithWorkingHours);
         }
 
+        public async Task<SalonResponse> GetCurrentAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            SalonWithWorkingHours? salonWithWorkingHours =
+                await salonRepository.GetCurrentAsync(cancellationToken);
+
+            if (salonWithWorkingHours is null)
+            {
+                throw new NotFoundException("No salon was found.");
+            }
+
+            return MapToResponse(salonWithWorkingHours);
+        }
+
         private static SalonResponse MapToResponse(
             SalonWithWorkingHours salonWithWorkingHours)
         {

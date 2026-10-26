@@ -10,5 +10,7 @@ namespace AppointmentBooking.Api.Services.Profile
         Task<MyProfileResponse> UpdateMyProfileAsync(UpdateMyProfileRequest request, CancellationToken cancellationToken);
 
         Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken cancellationToken);
+
+        Task DeleteMyAccountAsync(DeleteMyAccountRequest request, CancellationToken cancellationToken);
     }
 }

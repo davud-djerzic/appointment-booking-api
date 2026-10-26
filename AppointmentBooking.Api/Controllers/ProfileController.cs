@@ -49,6 +49,20 @@ namespace AppointmentBooking.Api.Controllers
 
             return NoContent();
         }
+
+        [HttpDelete("me")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> DeleteMyAccount(
+            DeleteMyAccountRequest request,
+            CancellationToken cancellationToken)
+        {
+            await profileService.DeleteMyAccountAsync(request, cancellationToken);
+
+            return NoContent();
+        }
     }
 }
 

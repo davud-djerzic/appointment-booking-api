@@ -2,6 +2,7 @@
 using AppointmentBooking.Api.DTOs.BookedServices.Response;
 using AppointmentBooking.Api.DTOs.Common;
 using AppointmentBooking.Api.Services.BookedServices;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AppointmentBooking.Api.Controllers
@@ -11,6 +12,7 @@ namespace AppointmentBooking.Api.Controllers
     public sealed class BookableServicesController(IBookableServiceService bookableService) : ControllerBase
     {
         [HttpPost]
+        [Authorize(Roles = "Employee, Admin")]
         [ProducesResponseType<ServiceResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -39,6 +41,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpDelete("{id:long:min(1)}")]
+        [Authorize(Roles = "Employee, Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
@@ -70,6 +73,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpPut("{id:long:min(1)}")]
+        [Authorize(Roles = "Employee, Admin")]
         [ProducesResponseType<ServiceResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -90,6 +94,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpPost("{id:long:min(1)}/activate")]
+        [Authorize(Roles = "Employee, Admin")]
         [ProducesResponseType<ServiceResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]

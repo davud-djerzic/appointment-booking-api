@@ -32,5 +32,16 @@ namespace AppointmentBooking.Api.Controllers
 
             return Ok(response);
         }
+
+        [HttpGet("current")]
+        [ProducesResponseType<SalonResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<SalonResponse>> GetCurrent(CancellationToken cancellationToken)
+        {
+            SalonResponse response = await salonService.GetCurrentAsync(cancellationToken);
+
+            return Ok(response);
+        }
     }
 }

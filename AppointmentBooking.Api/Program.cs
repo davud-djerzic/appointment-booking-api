@@ -1,4 +1,3 @@
-using AppointmentBooking.Api.BackgroundServices;
 using AppointmentBooking.Api.Configuration;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
@@ -139,8 +138,6 @@ builder.Services.AddSingleton<IBookingHoldRepository, BookingHoldRepository>();
 
 builder.Services.Configure<BookingOptions>(builder.Configuration.GetSection(BookingOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddHostedService<ExpiredAppointmnetCleanupService>();
-builder.Services.AddHostedService<AutomaticBookingCompletionService>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient<IEmailService, MailjetEmailService>(client =>

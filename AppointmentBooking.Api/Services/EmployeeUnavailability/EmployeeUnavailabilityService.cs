@@ -2,10 +2,12 @@ using AppointmentBooking.Api.DTOs.EmployeeUnavailability.Request;
 using AppointmentBooking.Api.DTOs.EmployeeUnavailability.Response;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.Models.Enums;
 using AppointmentBooking.Api.Repositories.BookingHolds;
 using AppointmentBooking.Api.Repositories.Bookings;
 using AppointmentBooking.Api.Repositories.Employees;
 using AppointmentBooking.Api.Repositories.EmployeeAvailabilityBlocks;
+using AppointmentBooking.Api.Repositories.EmployeeWorkingHoursRepository;
 using AppointmentBooking.Api.Services.CurrentUser;
 using System.ComponentModel.DataAnnotations;
 
@@ -14,6 +16,7 @@ namespace AppointmentBooking.Api.Services.EmployeeAvailabilityBlocks
     public sealed class EmployeeUnavailabilityService(
         IEmployeeUnavailabilityRepository unavailabilityRepository,
         IEmployeeRepository employeeRepository,
+        IEmployeeWorkingHoursRepository workingHoursRepository,
         IBookingRepository bookingRepository,
         IBookingHoldRepository bookingHoldRepository,
         ICurrentUserService currentUserService)
@@ -26,6 +29,7 @@ namespace AppointmentBooking.Api.Services.EmployeeAvailabilityBlocks
             Employee employee = await GetCurrentEmployeeAsync(cancellationToken);
             EmployeeUnavailability unavailability = CreateModel(employee.Id, request);
 
+            await EnsureBreakWithinWorkingHoursAsync(unavailability, cancellationToken);
             await EnsureNoExistingReservationAsync(unavailability, cancellationToken);
 
             EmployeeUnavailability created = await unavailabilityRepository.CreateAsync(
@@ -101,6 +105,7 @@ namespace AppointmentBooking.Api.Services.EmployeeAvailabilityBlocks
                 CreatedAt = existing.CreatedAt
             };
 
+            await EnsureBreakWithinWorkingHoursAsync(update, cancellationToken);
             await EnsureNoExistingReservationAsync(update, cancellationToken);
 
             EmployeeUnavailability? updated =
@@ -195,6 +200,49 @@ namespace AppointmentBooking.Api.Services.EmployeeAvailabilityBlocks
             {
                 throw new ConflictException(
                     "This period overlaps an active booking hold. Try again after the hold expires or is cancelled.");
+            }
+        }
+
+        private async Task EnsureBreakWithinWorkingHoursAsync(
+            EmployeeUnavailability unavailability,
+            CancellationToken cancellationToken)
+        {
+            if (unavailability.Type != EmployeeUnavailabilityType.Break)
+            {
+                return;
+            }
+
+            DateTimeOffset localStartsAt = TimeZoneInfo.ConvertTime(
+                unavailability.StartsAt,
+                AppointmentBooking.Api.Time.SalonTimeZone.Info);
+            DateTimeOffset localEndsAt = TimeZoneInfo.ConvertTime(
+                unavailability.EndsAt,
+                AppointmentBooking.Api.Time.SalonTimeZone.Info);
+
+            if (localStartsAt.Date != localEndsAt.Date)
+            {
+                throw new ValidationException("Privremena pauza mora početi i završiti istog dana.");
+            }
+
+            int isoDayOfWeek = localStartsAt.DayOfWeek == DayOfWeek.Sunday
+                ? 7
+                : (int)localStartsAt.DayOfWeek;
+            IReadOnlyCollection<EmployeeWorkingHours> workingHours =
+                await workingHoursRepository.GetByEmployeeIdAsync(
+                    unavailability.EmployeeId,
+                    cancellationToken);
+
+            TimeOnly breakStartsAt = TimeOnly.FromDateTime(localStartsAt.DateTime);
+            TimeOnly breakEndsAt = TimeOnly.FromDateTime(localEndsAt.DateTime);
+            bool isWithinWorkingHours = workingHours.Any(hours =>
+                (int)hours.DayOfWeek == isoDayOfWeek &&
+                hours.StartsAt <= breakStartsAt &&
+                hours.EndsAt >= breakEndsAt);
+
+            if (!isWithinWorkingHours)
+            {
+                throw new ConflictException(
+                    "Privremena pauza mora biti u cijelosti unutar radnog vremena zaposlenog za izabrani dan.");
             }
         }
 

@@ -2,7 +2,7 @@
 
 A RESTful appointment booking API built with ASP.NET Core and PostgreSQL.
 
-The application provides functionality for managing employees, services, employee-service assignments, and appointments. It includes input validation, centralized error handling, pagination, temporary appointment holds, appointment confirmation, automatic background processing, Swagger/OpenAPI documentation, Docker support, and unit tests.
+The application provides functionality for managing employees, services, employee-service assignments, and appointments. It includes input validation, centralized error handling, pagination, temporary appointment holds, appointment confirmation, Swagger/OpenAPI documentation, Docker support, and unit tests.
 
 ## Features
 
@@ -14,8 +14,6 @@ The application provides functionality for managing employees, services, employe
 - Appointment confirmation
 - Appointment cancellation
 - Appointment completion
-- Automatic cleanup of expired appointment holds
-- Automatic completion of finished appointments
 - Appointment filtering and pagination
 - Request validation
 - Centralized exception handling
@@ -135,6 +133,9 @@ The `.env.example` file contains the required configuration:
     POSTGRES_USER=appointment_user
     POSTGRES_PASSWORD=change_me
     POSTGRES_PORT=5432
+    REDIS_PORT=6379
+    API_PORT=8080
+    JWT_SECRET_KEY=use-a-random-secret-of-at-least-32-characters
 
 The actual `.env` file is intentionally excluded from version control.
 
@@ -142,19 +143,21 @@ The actual `.env` file is intentionally excluded from version control.
 
 The easiest way to run the complete application is with Docker Compose.
 
-Start the application and PostgreSQL database:
+Start the API, PostgreSQL database, and Redis:
 
     docker compose up --build
 
 Docker Compose starts:
 
 - PostgreSQL
+- Redis
 - Appointment Booking API
 
-On first initialization, Docker Compose applies the numbered SQL scripts mounted from
-`AppointmentBooking.Api/Database/` in order. Existing PostgreSQL volumes are not
-reinitialized automatically when a new script is added; apply new migrations to an
-existing database separately.
+On first initialization, Docker Compose applies the numbered schema and seed scripts
+mounted from `AppointmentBooking.Api/Database/` in order. `014_seed.sql` adds the
+configured services and, when an active employee already exists, that employee's working
+hours and service links. Existing PostgreSQL volumes are not reinitialized automatically
+when a script changes; use a new empty test volume to apply the scripts from scratch.
 
 The API is available at:
 
@@ -251,9 +254,7 @@ Appointments follow a defined lifecycle:
 
 A temporary hold prevents the selected appointment slot from being immediately booked by another customer.
 
-If the hold expires before confirmation, it can be automatically removed by the background cleanup service.
-
-Appointments that have already ended can also be automatically marked as completed.
+If the hold expires before confirmation, Redis expires its hold data automatically. A later hold request also removes expired references from that employee's Redis indexes.
 
 ## Appointment Holds
 
@@ -264,11 +265,9 @@ The hold duration is configurable through application settings.
 Example configuration:
 
     {
-      "Appointments": {
+      "Bookings": {
         "HoldDurationInMinutes": 1,
-        "CleanupIntervalSeconds": 30,
-        "EnableAutomaticCompletion": true,
-        "AutomaticCompletionTime": "14:57"
+        "AvailabilitySlotIntervalMinutes": 30
       }
     }
 
@@ -325,26 +324,7 @@ Appointment retrieval also supports filtering by relevant appointment properties
 
 ## Background Services
 
-The application contains background services responsible for automatic appointment processing.
-
-### Expired Appointment Hold Cleanup
-
-Expired appointment holds are periodically detected and removed from the database.
-
-This prevents abandoned appointment holds from blocking available time slots indefinitely.
-
-### Automatic Appointment Completion
-
-Appointments that have ended can automatically be marked as completed.
-
-The execution time can be configured through:
-
-    {
-      "Appointments": {
-        "EnableAutomaticCompletion": true,
-        "AutomaticCompletionTime": "14:57"
-      }
-    }
+The API currently has no background services. Appointment completion is performed manually through the staff workflow. Redis applies the expiration time to temporary booking-hold data.
 
 ## Database
 
@@ -384,12 +364,10 @@ The application includes a multi-stage Dockerfile and Docker Compose configurati
 
 Docker Compose provides:
 
-    PostgreSQL
-        |
-        v
-    Appointment Booking API
+    PostgreSQL <--- Appointment Booking API ---> Redis
 
-The PostgreSQL database is exposed locally through the configured port, while the API runs on port `8080`.
+PostgreSQL and Redis are exposed only on localhost for local tools. The API is exposed on
+localhost at port `8080` by default.
 
 Start the complete environment with:
 
@@ -402,11 +380,9 @@ The application uses configuration for appointment-related behavior.
 Example:
 
     {
-      "Appointments": {
+      "Bookings": {
         "HoldDurationInMinutes": 1,
-        "CleanupIntervalSeconds": 30,
-        "EnableAutomaticCompletion": true,
-        "AutomaticCompletionTime": "14:57"
+        "AvailabilitySlotIntervalMinutes": 30
       }
     }
 

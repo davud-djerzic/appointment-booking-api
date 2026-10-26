@@ -8,5 +8,7 @@ namespace AppointmentBooking.Api.Repositories.Customers
         Task<Customer?> GetActiveByUserAccountIdAsync(long userAccountId, CancellationToken cancellationToken);
 
         Task UpdateProfileAsync(long userAccountId, UpdateMyProfileRequest request, CancellationToken cancellationToken);
+
+        Task<bool> DeleteAccountAsync(long userAccountId, CancellationToken cancellationToken);
     }
 }

@@ -659,95 +659,6 @@ namespace AppointmentBooking.Api.Repositories.Bookings
             }
         }
 
-        public async Task<int> CompleteExpiredAutomaticallyAsync(DateTimeOffset localNow, CancellationToken cancellationToken)
-        {
-
-            DateTimeOffset startOfLocalDay = new DateTimeOffset(localNow.Date, localNow.Offset);
-
-            DateTimeOffset startOfNextLocalDay = startOfLocalDay.AddDays(1);
-
-            DateTimeOffset nowUtc = localNow.ToUniversalTime();
-
-            DateTimeOffset startOfDayUtc = startOfLocalDay.ToUniversalTime();
-
-            DateTimeOffset startOfNextDayUtc = startOfNextLocalDay.ToUniversalTime();
-
-            const string completeBookingsSql = """
-                UPDATE bookings
-                SET
-                    status = 'completed',
-                    completion_source = 'automatic',
-                    completed_at = @CompletedAt,
-                    updated_at = @CompletedAt
-                WHERE status = 'scheduled'
-                  AND starts_at >= @StartOfDay
-                AND starts_at < @StartOfNextDay
-                AND ends_at <= @CompletedAt
-                RETURNING id;
-                """;
-
-            const string completeAppointmentsSql = """
-                UPDATE appointments
-                SET
-                    status = 'completed',
-                    updated_at = @CompletedAt
-                WHERE booking_id = ANY(@BookingIds)
-                  AND status = 'scheduled';
-                """;
-
-            await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-            try
-            {
-                long[] bookingIds =
-                    (await connection.QueryAsync<long>(
-                        new CommandDefinition(
-                            completeBookingsSql,
-                            new
-                            {
-                                CompletedAt = nowUtc,
-                                StartOfDay = startOfDayUtc,
-                                StartOfNextDay = startOfNextDayUtc
-                            },
-                            transaction: transaction,
-                            cancellationToken: cancellationToken)))
-                    .ToArray();
-
-                if (bookingIds.Length == 0)
-                {
-                    await transaction.CommitAsync(
-                        cancellationToken);
-
-                    return 0;
-                }
-
-                await connection.ExecuteAsync(
-                    new CommandDefinition(
-                        completeAppointmentsSql,
-                        new
-                        {
-                            CompletedAt = nowUtc,
-                            BookingIds = bookingIds
-                        },
-                        transaction: transaction,
-                        cancellationToken: cancellationToken));
-
-                await transaction.CommitAsync(
-                    cancellationToken);
-
-                return bookingIds.Length;
-            }
-            catch
-            {
-                await transaction.RollbackAsync(
-                    cancellationToken);
-
-                throw;
-            }
-        }
-
         public async Task<PagedResult<EmployeeBookingListItem>> GetEmployeeBookingsAsync(long employeeId, BookingSearchCriteria criteria, CancellationToken cancellationToken)
         {
             const string sql = """
@@ -1106,13 +1017,13 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 dateFromUtc =
                     new DateTimeOffset(
                         localDateFrom,
-                        TimeZoneInfo.Local.GetUtcOffset(localDateFrom))
+                        AppointmentBooking.Api.Time.SalonTimeZone.Info.GetUtcOffset(localDateFrom))
                     .ToUniversalTime();
 
                 dateToUtc =
                     new DateTimeOffset(
                         localDateTo,
-                        TimeZoneInfo.Local.GetUtcOffset(localDateTo))
+                        AppointmentBooking.Api.Time.SalonTimeZone.Info.GetUtcOffset(localDateTo))
                     .ToUniversalTime();
             }
 
@@ -1126,7 +1037,7 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 fromUtc =
                     new DateTimeOffset(
                         localFrom,
-                        TimeZoneInfo.Local.GetUtcOffset(localFrom))
+                        AppointmentBooking.Api.Time.SalonTimeZone.Info.GetUtcOffset(localFrom))
                     .ToUniversalTime();
             }
 
@@ -1142,7 +1053,7 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                 toUtc =
                     new DateTimeOffset(
                         localTo,
-                        TimeZoneInfo.Local.GetUtcOffset(localTo))
+                        AppointmentBooking.Api.Time.SalonTimeZone.Info.GetUtcOffset(localTo))
                     .ToUniversalTime();
             }
 

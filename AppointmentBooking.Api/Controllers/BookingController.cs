@@ -227,7 +227,7 @@ namespace AppointmentBooking.Api.Controllers
             return Ok(response);
         }
 
-        [Authorize(Roles = "Customer")]
+        [Authorize(Roles = "Customer,Admin")]
         [HttpGet("bookable-employees")]
         [ProducesResponseType<IReadOnlyList<BookableEmployeeResponse>>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]

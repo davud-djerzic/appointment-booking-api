@@ -127,9 +127,9 @@ namespace AppointmentBooking.Api.Services.EmployeeWorkingHoursService
 
         public async Task<bool> IsWithinWorkingHoursAsync(long employeeId, DateTimeOffset startsAt, DateTimeOffset endsAt, CancellationToken cancellationToken)
         {
-            DateTime localStartsAt = TimeZoneInfo.ConvertTime(startsAt, TimeZoneInfo.Local).DateTime;
+            DateTime localStartsAt = TimeZoneInfo.ConvertTime(startsAt, AppointmentBooking.Api.Time.SalonTimeZone.Info).DateTime;
 
-            DateTime localEndsAt = TimeZoneInfo.ConvertTime(endsAt, TimeZoneInfo.Local).DateTime;
+            DateTime localEndsAt = TimeZoneInfo.ConvertTime(endsAt, AppointmentBooking.Api.Time.SalonTimeZone.Info).DateTime;
 
             if (localStartsAt.Date != localEndsAt.Date) return false;
 

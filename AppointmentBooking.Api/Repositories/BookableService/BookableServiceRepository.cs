@@ -8,6 +8,33 @@ namespace AppointmentBooking.Api.Repositories.Services
 {
     public sealed class BookableServiceRepository(NpgsqlDataSource dataSource) : IBookableServiceRepository 
     {
+        // Unique index on lower(name) for active services only (Database/015_services_unique_active_name.sql).
+        private const string ActiveNameUniqueIndex = "ux_services_active_name";
+
+        // The salon's active employees provide every active service, so a service is
+        // assigned to all active employees when it is created or re-activated.
+        private const string AssignToActiveEmployeesSql = """
+            INSERT INTO employee_services
+            (
+                employee_id,
+                service_id
+            )
+            SELECT
+                e.id,
+                @ServiceId
+            FROM employees AS e
+            WHERE e.is_active = TRUE
+            ON CONFLICT (employee_id, service_id)
+            DO UPDATE
+            SET
+                updated_at =
+                    CASE
+                        WHEN employee_services.is_active = FALSE THEN NOW()
+                        ELSE employee_services.updated_at
+                    END,
+                is_active = TRUE;
+            """;
+
         public async Task<BookableService> CreateAsync(BookableService service, CancellationToken cancellationToken)
         {
             const string sql = """
@@ -26,20 +53,34 @@ namespace AppointmentBooking.Api.Repositories.Services
                     updated_at AS UpdatedAt;
                 """;
 
+            await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+
             try
             {
-                await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-                var command = new CommandDefinition(
+                CommandDefinition command = new(
                     sql,
                     service,
+                    transaction: transaction,
                     cancellationToken: cancellationToken);
 
-                return await connection.QuerySingleAsync<BookableService>(command);
-            } catch (PostgresException ex)
-                    when(ex.SqlState == PostgresErrorCodes.UniqueViolation)
+                BookableService created = await connection.QuerySingleAsync<BookableService>(command);
+
+                await AssignToActiveEmployeesAsync(connection, transaction, created.Id, cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
+                return created;
+            }
+            catch (PostgresException ex)
+                when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
+                await transaction.RollbackAsync(cancellationToken);
                 throw new ServiceNameAlreadyExistsException(service.Name, ex);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
             }
         }
 
@@ -85,15 +126,10 @@ namespace AppointmentBooking.Api.Repositories.Services
         WHERE id = @Id;
         """;
 
+            // A deleted service is removed from every employee. Nothing references
+            // employee_services, so the rows can be deleted.
             const string deactivateAssignmentsSql = """
-        UPDATE employee_services
-        SET
-            updated_at =
-                CASE
-                    WHEN is_active = TRUE THEN NOW()
-                    ELSE updated_at
-                END,
-            is_active = FALSE
+        DELETE FROM employee_services
         WHERE service_id = @Id;
         """;
 
@@ -290,7 +326,7 @@ namespace AppointmentBooking.Api.Repositories.Services
                 return await connection.QuerySingleOrDefaultAsync<BookableService>(command);
             }
             catch (PostgresException ex)
-            when (ex.SqlState == PostgresErrorCodes.UniqueViolation && ex.ConstraintName == "services_name_key")
+            when (ex.SqlState == PostgresErrorCodes.UniqueViolation && ex.ConstraintName == ActiveNameUniqueIndex)
             {
                 throw new ServiceNameAlreadyExistsException(service.Name, ex);
             }
@@ -320,12 +356,56 @@ namespace AppointmentBooking.Api.Repositories.Services
                 """;
 
             await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
-            CommandDefinition command = new CommandDefinition(
-                sql,
-                new { Id = id},
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                CommandDefinition command = new(
+                    sql,
+                    new { Id = id },
+                    transaction: transaction,
+                    cancellationToken: cancellationToken);
+
+                BookableService? activated = await connection.QuerySingleOrDefaultAsync<BookableService>(command);
+                if (activated is null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return null;
+                }
+
+                await AssignToActiveEmployeesAsync(connection, transaction, activated.Id, cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
+                return activated;
+            }
+            catch (PostgresException ex)
+                when (ex.SqlState == PostgresErrorCodes.UniqueViolation && ex.ConstraintName == ActiveNameUniqueIndex)
+            {
+                // Another active service already uses this name.
+                await transaction.RollbackAsync(cancellationToken);
+                BookableService? existing = await GetByIdAsync(id, cancellationToken);
+                throw new ServiceNameAlreadyExistsException(existing?.Name ?? $"#{id}", ex);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+
+        private static Task<int> AssignToActiveEmployeesAsync(
+            NpgsqlConnection connection,
+            NpgsqlTransaction transaction,
+            long serviceId,
+            CancellationToken cancellationToken)
+        {
+            CommandDefinition command = new(
+                AssignToActiveEmployeesSql,
+                new { ServiceId = serviceId },
+                transaction: transaction,
                 cancellationToken: cancellationToken);
 
-            return await connection.QuerySingleOrDefaultAsync<BookableService>(command);
+            return connection.ExecuteAsync(command);
         }
 
         public async Task<IReadOnlyCollection<BookableService>> GetByIdsAsync(IReadOnlyCollection<long> ids, CancellationToken cancellationToken)

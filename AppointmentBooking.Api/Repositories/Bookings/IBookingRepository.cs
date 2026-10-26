@@ -23,8 +23,6 @@ namespace AppointmentBooking.Api.Repositories.Bookings
 
         Task<bool> CompleteAsync(long bookingId, CancellationToken cancellationToken);
 
-        Task<int> CompleteExpiredAutomaticallyAsync(DateTimeOffset completedAt, CancellationToken cancellationToken);
-
         Task<PagedResult<EmployeeBookingListItem>> GetEmployeeBookingsAsync(long employeeId, BookingSearchCriteria criteria, CancellationToken cancellationToken);
 
         Task<IReadOnlyList<BookingTimeRange>> GetScheduledTimeRangesAsync(long employeeId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken);

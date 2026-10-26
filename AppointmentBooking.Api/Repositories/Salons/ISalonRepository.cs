@@ -6,6 +6,7 @@ namespace AppointmentBooking.Api.Repositories.Salons
     {
         Task<SalonWithWorkingHours> CreateAsync(Salon salon, IReadOnlyCollection<SalonWorkingHours> workingHours, CancellationToken cancellationToken);
         Task<SalonWithWorkingHours?> GetByIdAsync(long salonId, CancellationToken cancellationToken);
+        Task<SalonWithWorkingHours?> GetCurrentAsync(CancellationToken cancellationToken);
 
     }
 }

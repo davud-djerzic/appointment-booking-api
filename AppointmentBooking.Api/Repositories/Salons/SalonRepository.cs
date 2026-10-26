@@ -164,50 +164,79 @@ namespace AppointmentBooking.Api.Repositories.Salons
                     sh.starts_at;
                 """;
 
+            return await GetSalonAsync(sql, new { SalonId = salonId }, cancellationToken);
+        }
+
+        public async Task<SalonWithWorkingHours?> GetCurrentAsync(CancellationToken cancellationToken)
+        {
+            const string sql = """
+                SELECT
+                    s.id,
+                    s.name AS Name,
+                    s.address AS Address,
+                    s.city AS City,
+                    s.phone AS Phone,
+                    s.instagram_url AS InstagramUrl,
+                    s.facebook_url AS FacebookUrl,
+                    s.latitude AS Latitude,
+                    s.longitude AS Longitude,
+                    s.is_active AS IsActive,
+                    s.created_at AS CreatedAt,
+                    s.updated_at AS UpdatedAt,
+                    sh.id AS WorkingHoursId,
+                    sh.salon_id AS WorkingHoursSalonId,
+                    sh.day_of_week AS WorkingHoursDayOfWeek,
+                    sh.starts_at AS WorkingHoursStartsAt,
+                    sh.ends_at AS WorkingHoursEndsAt
+                FROM (
+                    SELECT *
+                    FROM salons
+                    WHERE is_active = TRUE
+                    ORDER BY id
+                    LIMIT 1
+                ) AS s
+                LEFT JOIN salon_working_hours AS sh
+                    ON sh.salon_id = s.id
+                ORDER BY sh.day_of_week, sh.starts_at;
+                """;
+
+            return await GetSalonAsync(sql, new object(), cancellationToken);
+        }
+
+        private async Task<SalonWithWorkingHours?> GetSalonAsync(
+            string sql,
+            object parameters,
+            CancellationToken cancellationToken)
+        {
             await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
             Salon? salon = null;
-
             List<SalonWorkingHours> workingHours = [];
 
             await connection.QueryAsync<Salon, SalonWorkingHoursRow, Salon>(
-                new CommandDefinition(
-                    sql,
-                    new
-                    {
-                        SalonId = salonId
-                    },
-                    cancellationToken: cancellationToken),
+                new CommandDefinition(sql, parameters, cancellationToken: cancellationToken),
                 (salonRow, workingHoursRow) =>
                 {
                     salon ??= salonRow;
-
                     if (workingHoursRow.WorkingHoursId.HasValue)
                     {
-                        workingHours.Add(
-                            new SalonWorkingHours
-                            {
-                                Id = workingHoursRow.WorkingHoursId.Value,
-                                SalonId = workingHoursRow.WorkingHoursSalonId!.Value,
-                                DayOfWeek = (WeekDay)
-                                    workingHoursRow.WorkingHoursDayOfWeek!.Value,
-                                StartsAt = workingHoursRow.WorkingHoursStartsAt!.Value,
-                                EndsAt = workingHoursRow.WorkingHoursEndsAt!.Value
-                            });
+                        workingHours.Add(new SalonWorkingHours
+                        {
+                            Id = workingHoursRow.WorkingHoursId.Value,
+                            SalonId = workingHoursRow.WorkingHoursSalonId!.Value,
+                            DayOfWeek = (WeekDay)workingHoursRow.WorkingHoursDayOfWeek!.Value,
+                            StartsAt = workingHoursRow.WorkingHoursStartsAt!.Value,
+                            EndsAt = workingHoursRow.WorkingHoursEndsAt!.Value
+                        });
                     }
 
                     return salonRow;
                 },
                 splitOn: "WorkingHoursId");
 
-            if (salon is null)
-            {
-                return null;
-            }
-
-            return new SalonWithWorkingHours(
-                salon,
-                workingHours);
+            return salon is null
+                ? null
+                : new SalonWithWorkingHours(salon, workingHours);
         }
 
         private sealed class SalonWorkingHoursRow

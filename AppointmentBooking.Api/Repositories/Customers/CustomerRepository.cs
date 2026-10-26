@@ -117,6 +117,156 @@ namespace AppointmentBooking.Api.Repositories.Customers
                 throw;
             }
         }
+
+        public async Task<bool> DeleteAccountAsync(
+            long userAccountId,
+            CancellationToken cancellationToken)
+        {
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
+
+            await using NpgsqlTransaction transaction =
+                await connection.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                const string getCustomerIdSql = """
+                    SELECT c.id
+                    FROM customers c
+                    INNER JOIN user_accounts ua ON ua.id = c.user_account_id
+                    WHERE c.user_account_id = @UserAccountId
+                      AND ua.role = 'customer'
+                      AND ua.is_active = TRUE
+                    FOR UPDATE OF c, ua;
+                    """;
+
+                long? customerId =
+                    await connection.QuerySingleOrDefaultAsync<long?>(
+                        new CommandDefinition(
+                            getCustomerIdSql,
+                            new { UserAccountId = userAccountId },
+                            transaction,
+                            cancellationToken: cancellationToken));
+
+                if (!customerId.HasValue)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return false;
+                }
+
+                const string cancelUpcomingAppointmentsSql = """
+                    UPDATE appointments a
+                    SET status = 'cancelled',
+                        updated_at = NOW()
+                    FROM bookings b
+                    WHERE a.booking_id = b.id
+                      AND b.customer_id = @CustomerId
+                      AND b.status = 'scheduled'
+                      AND b.starts_at > NOW()
+                      AND a.status = 'scheduled';
+                    """;
+
+                const string anonymizeBookingsSql = """
+                    UPDATE bookings
+                    SET customer_id = NULL,
+                        customer_first_name = 'Obrisan',
+                        customer_last_name = 'korisnik',
+                        notes = NULL,
+                        status = CASE
+                            WHEN status = 'scheduled' AND starts_at > NOW()
+                                THEN 'cancelled'
+                            ELSE status
+                        END,
+                        updated_at = NOW()
+                    WHERE customer_id = @CustomerId;
+                    """;
+
+                const string deletePasswordResetCodesSql = """
+                    DELETE FROM password_reset_codes
+                    WHERE user_account_id = @UserAccountId;
+                    """;
+
+                const string unlinkRefreshTokensSql = """
+                    UPDATE user_refresh_tokens
+                    SET replaced_by_token_id = NULL
+                    WHERE user_account_id = @UserAccountId;
+                    """;
+
+                const string deleteRefreshTokensSql = """
+                    DELETE FROM user_refresh_tokens
+                    WHERE user_account_id = @UserAccountId;
+                    """;
+
+                const string deleteCustomerSql = """
+                    DELETE FROM customers
+                    WHERE id = @CustomerId;
+                    """;
+
+                const string deleteUserAccountSql = """
+                    DELETE FROM user_accounts
+                    WHERE id = @UserAccountId
+                      AND role = 'customer';
+                    """;
+
+                var parameters = new
+                {
+                    UserAccountId = userAccountId,
+                    CustomerId = customerId.Value
+                };
+
+                await connection.ExecuteAsync(new CommandDefinition(
+                    cancelUpcomingAppointmentsSql,
+                    parameters,
+                    transaction,
+                    cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition(
+                    anonymizeBookingsSql,
+                    parameters,
+                    transaction,
+                    cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition(
+                    deletePasswordResetCodesSql,
+                    parameters,
+                    transaction,
+                    cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition(
+                    unlinkRefreshTokensSql,
+                    parameters,
+                    transaction,
+                    cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition(
+                    deleteRefreshTokensSql,
+                    parameters,
+                    transaction,
+                    cancellationToken: cancellationToken));
+                await connection.ExecuteAsync(new CommandDefinition(
+                    deleteCustomerSql,
+                    parameters,
+                    transaction,
+                    cancellationToken: cancellationToken));
+
+                int deletedAccounts = await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        deleteUserAccountSql,
+                        parameters,
+                        transaction,
+                        cancellationToken: cancellationToken));
+
+                if (deletedAccounts != 1)
+                {
+                    throw new InvalidOperationException(
+                        "The customer account could not be deleted.");
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                return true;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
     
     }
 }

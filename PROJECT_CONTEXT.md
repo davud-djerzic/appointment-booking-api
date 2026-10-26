@@ -67,7 +67,7 @@ Mobile serializira/deserializira JSON preko `System.Text.Json`. Glavni API klije
 | `ConnectionStrings:Database` | PostgreSQL veza, koristi se pri kreiranju `NpgsqlDataSource`. |
 | `Jwt:SecretKey`, `Jwt:Issuer`, `Jwt:Audience`, `Jwt:AccessTokenMinutes`, `Jwt:RefreshTokenDays` | JWT potpis, validacija i rokovi tokena. Tajne vrijednosti se ne uključuju u dokumentaciju. |
 | `Redis:ConnectionString` | Redis multiplexer za privremene holdove. |
-| `Bookings:HoldDurationInMinutes`, `CleanupIntervalSeconds`, `EnableAutomaticCompletion`, `AutomaticCompletionTime`, `AvailabilitySlotIntervalMinutes` | Hold rok, automatizacija i granularnost availability slotova. Trenutni `appsettings.json` sadrži vrijednosti za ove opcije. |
+| `Bookings:HoldDurationInMinutes`, `AvailabilitySlotIntervalMinutes` | Hold rok i granularnost availability slotova. |
 | `Mailjet:ApiKey`, `SecretKey`, `FromEmail`, `FromName` | Mailjet konfiguracija u `MailjetOptions`; vrijednosti nisu kopirane. |
 
 Konfiguraciju treba dostaviti preko odgovarajuće konfiguracije .NET-a, environment varijabli, user secrets ili Docker okruženja. Primjeri naziva environment ključeva u Compose-u su `ConnectionStrings__Database` i `Jwt__SecretKey`. Nijedna tajna vrijednost nije prenesena u ovaj dokument.
@@ -104,9 +104,9 @@ Izvor sheme je skup SQL skripti. Konačna shema se formira primjenom skripti po 
 
 **Datumi i novac:** termini i izostanci koriste `DateTimeOffset` u C# i `TIMESTAMPTZ` u PostgreSQL-u. Radni sati su `TIME`/`TimeOnly` bez zone. Cijene su `decimal` / `NUMERIC(10,2)`. Serijalizacija enum-a u API-ju je string, dok se DB statusi čuvaju malim slovima. Availabilty izračun koristi `TimeZoneInfo.Local` i `DateTimeOffset.Now`; eksplicitna poslovna vremenska zona za salon nije pronađena. Ovo je važno kod API-ja pokrenutog u Dockeru, gdje sistemska zona može biti drugačija od zone uređaja.
 
-**Seed:** `006_seed.sql` dodaje demonstracijske račune, zaposlene, usluge, njihove assignment-e, radne sate i booking. To su seed podaci, ne garancija produkcijskih ID-jeva.
+**Seed:** Demo seed skripta je uklonjena. Compose inicijalizuje samo shemu, bez početnih salona, korisnika, usluga ili termina.
 
-**Compose/migracije:** `compose.yaml` mounta SQL skripte 001–012 u `docker-entrypoint-initdb.d`, ali trenutno ne uključuje 013 i 014. Svježa Docker baza zato ne dobija walk-in kolone/nullable customer niti `salons.phone`, iako trenutni API kod koristi ta polja. PostgreSQL init skripte se izvršavaju samo pri prvom inicijalizovanju praznog volumena; dodavanje skripte ne migrira već postojeći volumen. Ovo je potvrđena razlika između shema opisanih u kodu i Compose konfiguracije.
+**Compose/migracije:** `compose.yaml` mounta SQL shema skripte 001–005 i 007–014 u `docker-entrypoint-initdb.d`; demo seed se ne pokreće. PostgreSQL init skripte se izvršavaju samo pri prvom inicijalizovanju praznog volumena; dodavanje ili izmjena skripti ne mijenja već postojeći volumen.
 
 ### 3.5. Booking poslovna logika
 
@@ -116,8 +116,8 @@ Izvor sheme je skup SQL skripti. Konačna shema se formira primjenom skripti po 
 - Availability je po zaposleniku, datumu i listi service ID-jeva. Trajanje usluga određuje trajanje svakog predloženog termina. Slotovi se pomjeraju po `AvailabilitySlotIntervalMinutes` i kandidat mora stati u radni interval. Dan u prošlosti i vikendi vraćaju prazne slotove. Preklapanja se porede kao half-open intervali: `candidateStart < block.EndsAt && candidateEnd > block.StartsAt`; zbog toga slot koji počinje tačno kada pauza završava nije preklop.
 - Availability odbacuje termine koji se preklapaju sa employee unavailability, scheduled bookingom ili aktivnim Redis holdom. Vacation all-day datumi takođe uklanjaju datum iz listi radnih dana.
 - `GET /api/bookings/calendar-days` vraća datume, ne slotove. Trenutna izmjena traži prethodnih 30 i budućih do 60 radnih datuma, filtrira vikende, oslanja se na employee working-hours dane i izbacuje all-day vacation. `WorkingDates` je sortirana kolekcija. U sadašnjoj implementaciji buduća kolekcija uzima datume `>= today`, pa ako je danas radni dan, danas ulazi među tih 60.
-- Cancel/complete status operacije imaju role i ownership provjere u servisu. Customer vidi svoje rezervacije; employee vidi svoje booking-e; admin može dobiti admin listu. Completed ne može prije završetka termina; cancelled ne može biti dovršen. Automatsko dovršavanje koristi `AutomaticBookingCompletionService`, radi u lokalnoj sistemskoj zoni i upisuje `CompletionSource.Automatic`.
-- `ExpiredAppointmnetCleanupService` je registrovan kao background service, ali je tijelo `ExecuteAsync` trenutno komentarisano; efektivno ne radi periodični cleanup. Redis expiry i servisna provjera roka i dalje postoje, ali README opis cleanup-a je zastario.
+- Cancel/complete status operacije imaju role i ownership provjere u servisu. Customer vidi svoje rezervacije; employee vidi svoje booking-e; admin može dobiti admin listu. Completed ne može prije završetka termina; cancelled ne može biti dovršen. Dovršavanje termina se obavlja ručno u staff toku.
+- API nema registrovane background service-e. Hold zapis u Redis-u ističe preko TTL-a; potvrda/otkazivanje brišu hold i njegove indekse.
 
 ### 3.6. API endpoint-i
 
@@ -178,13 +178,10 @@ Ruta tokena `[controller]` uklanja sufiks `Controller`. `BookingsController` se 
 | `GET /api/profile/me` | `ProfileController.GetMyProfile` | token korisnika → `MyProfileResponse` | Customer (kontroler-level) |
 | `PATCH /api/profile/me` | `UpdateMyProfile` | `UpdateMyProfileRequest` → response | Customer |
 | `POST /api/profile/me/change-password` | `ChangePassword` | `ChangePasswordRequest` → `204` | Customer |
+| `DELETE /api/profile/me` | `DeleteMyAccount` | `DeleteMyAccountRequest` with current password → `204`; anonymizes history and cancels upcoming bookings | Customer |
 | `POST /api/salons` | `SalonsController.Create` | `CreateSalonRequest` → `SalonResponse`, `201` | Bez eksplicitnog `[Authorize]` |
 | `GET /api/salons/{salonId}` | `GetById` | salon ID → `SalonResponse` (uključuje `Phone`) | Bez eksplicitnog `[Authorize]` |
 | `GET /api/booking-test/overlap` | `BookingTestController.HasOverlap` | employeeId, startsAt, endsAt → bool | Nema auth/environment zaštite u akciji |
-| `POST /api/dev/email-test` | `EmailTestController.SendTestEmail` | nema body-ja → poruka | Nema auth; akcija vraća 404 izvan Development |
-| `POST /api/redis-test/holds` | `RedisTestController.Create` | `BookingHold` → hold/conflict | Nema auth/environment zaštite u akciji |
-| `GET /api/redis-test/holds/{holdToken}` | `RedisTestController.Get` | token → hold ili 404 | Nema auth/environment zaštite u akciji |
-| `DELETE /api/redis-test/holds/{holdToken}` | `RedisTestController.Delete` | token → `204`/404 | Nema auth/environment zaštite u akciji |
 
 `AppointmentsController` u `Controllers/AppointmentsController.cs` ima stare akcije unutar komentara, pa **ne pruža aktivne `/api/appointments` rute**. Stari `AppointmentService` i prateći DTO/repository kod postoje paralelno, ali novi Mobile tok koristi `/api/bookings`.
 
@@ -238,8 +235,7 @@ Datumi gornjeg primjera služe samo za ilustraciju stvarne strukture (`BookingCa
 - `EmployeeWorkingHoursService` i `EmployeeUnavailabilityService`: provjera vlasništva/aktivnog employee-a i validacija rasporeda/izostanaka.
 - `SalonService`: kreiranje i dohvat salona; nema update endpointa u pregledanom controlleru.
 - `MailjetEmailService`: slanje emaila preko Mailjet HTTP API-ja.
-- `AutomaticBookingCompletionService`: ako je `EnableAutomaticCompletion`, računa sljedeće dnevno lokalno vrijeme, pronalazi završene zakazane booking-e i označava ih kao automatic.
-- `ExpiredAppointmnetCleanupService`: registrovan, ali je loop i poziv cleanup metode komentarisani; parametri se ne koriste.
+- Nema registrovanih API background service-a. Redis hold hash ključevi imaju TTL; hold tokeni uklanjaju se iz indeksa pri brisanju holda ili pri kreiranju narednog holda za istog zaposlenika.
 
 ## 4. Mobile projekat
 
@@ -320,7 +316,7 @@ Komponente koriste `ObservableObject`, `[ObservableProperty]` i `[RelayCommand]`
 | `StaffAppointmentViewModel` termini/detalji | `GET /api/bookings/employee?...`, `GET /api/bookings/employee/{bookingId}` | Employee/Admin; Employee dobija samo svoje, Admin servis koristi admin pretragu. |
 | `StaffAppointmentViewModel` ručni booking | `POST /api/bookings/staff` | Employee/Admin; Mobile request odgovara `CreateStaffBookingRequest`; neregistrovani customer se čuva kao ime/prezime direktno na booking zapisu. |
 
-Mobile ne poziva aktivne stare `/api/appointments` rute. Nema pronađene Mobile integracije za service CRUD, employee CRUD, working-hours CRUD, salon kreiranje, email-test, Redis-test ili admin booking filter endpoint.
+Mobile ne poziva aktivne stare `/api/appointments` rute. Nema pronađene Mobile integracije za service CRUD, employee CRUD, working-hours CRUD, salon kreiranje ili admin booking filter endpoint. Email i Redis test kontroleri su uklonjeni.
 
 ## 5. Tokovi kroz oba projekta
 
@@ -362,11 +358,10 @@ Profil učitava `/api/profile/me`, zatim `/api/salons/{SalonId}`. Model telefona
 - Walk-in booking s customer imenom/prezimenom bez account zapisa.
 - Staff/admin Mobile paneli i kalendar datuma.
 - Salon profil i salon telefon u trenutnom radnom stablu.
-- Automatsko dovršavanje booking-a ako je uključeno konfiguracijom.
+- Dovršavanje termina iz staff panela.
 
 ### Djelimično implementirano ili zastarjelo
 
-- `ExpiredAppointmnetCleanupService` je no-op jer je implementacija komentarisana.
 - `AppointmentsController` ima komentarisane stare akcije; aktivni tok je `BookingsController`.
 - `README.md` ima historijski opis i sadrži zastarjele tvrdnje: npr. expired hold cleanup opisuje kao aktivan DB cleanup, buduće funkcionalnosti navodi auth/availability, i koristi starije `Appointments` konfiguracijske nazive. Kod u `Program.cs` i `BookingOptions` je mjerodavan.
 - Migration 014 za salon telefon je prisutna kao necommitovan fajl; Compose je ne montira. Isto važi za migration 013 walk-in customer kolone.
@@ -375,7 +370,7 @@ Profil učitava `/api/profile/me`, zatim `/api/salons/{SalonId}`. Model telefona
 - `BookingCalendarService` cache je process-local i ne invalidira se; API promjene rasporeda/odmora tokom istog procesa mogu ostati nevidljive do novog procesa.
 - Availability koristi `TimeZoneInfo.Local`; zone baze/hosta/salona nisu eksplicitno standardizovane u pregledanom kodu.
 - Brojne upravljačke API rute nemaju `[Authorize]` i globalni fallback ne postoji. Treba potvrditi namjeru i pristupnu granicu prije javnog deploymenta.
-- `BookingTestController` i `RedisTestController` nemaju auth/environment guard. Email test je ograničen na Development, ali nema auth atribut.
+- `BookingTestController` nema auth/environment guard.
 - `SalonResponse.FacebookUrl` ostaje u API/Mobile DTO-ima, iako Mobile profil više nema Facebook UI u trenutnom radnom stablu. Sam API response contract i salon DB kolona još sadrže Facebook.
 
 ### Git stanje i nedavne promjene

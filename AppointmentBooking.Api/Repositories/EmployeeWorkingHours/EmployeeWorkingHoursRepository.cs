@@ -217,13 +217,68 @@ namespace AppointmentBooking.Api.Repositories.EmployeeWorkingHoursRepository
                         cancellationToken: cancellationToken));
 
             EmployeeWorkingHours[] dayHours = currentHours.ToArray();
+            int firstAffectedIndex = -1;
+            int lastAffectedIndex = -1;
+            TimeOnly baseStartsAt = default;
+            TimeOnly baseEndsAt = default;
+
             EmployeeWorkingHours? containingInterval = dayHours.FirstOrDefault(hour =>
                 hour.StartsAt <= startsAt && hour.EndsAt >= endsAt);
 
-            if (containingInterval is null)
+            // Applying a recurring break splits one working interval into two rows.
+            // On the next edit, treat those two rows as the original interval so the
+            // break can be moved or adjusted across the old gap.
+            if (dayHours.Length == 2 &&
+                dayHours[0].StartsAt <= startsAt &&
+                dayHours[1].EndsAt >= endsAt)
+            {
+                firstAffectedIndex = 0;
+                lastAffectedIndex = 1;
+                baseStartsAt = dayHours[0].StartsAt;
+                baseEndsAt = dayHours[1].EndsAt;
+            }
+            else if (containingInterval is not null)
+            {
+                firstAffectedIndex = Array.IndexOf(dayHours, containingInterval);
+                lastAffectedIndex = firstAffectedIndex;
+                baseStartsAt = containingInterval.StartsAt;
+                baseEndsAt = containingInterval.EndsAt;
+            }
+            else
+            {
+                // Support schedules with other intervals too: when the requested
+                // break spans an existing gap, replace the adjacent pair around it.
+                for (int index = 0; index < dayHours.Length - 1; index++)
+                {
+                    EmployeeWorkingHours before = dayHours[index];
+                    EmployeeWorkingHours after = dayHours[index + 1];
+
+                    if (before.EndsAt < after.StartsAt &&
+                        before.StartsAt <= startsAt &&
+                        after.EndsAt >= endsAt)
+                    {
+                        firstAffectedIndex = index;
+                        lastAffectedIndex = index + 1;
+                        baseStartsAt = before.StartsAt;
+                        baseEndsAt = after.EndsAt;
+                        break;
+                    }
+                }
+            }
+
+            if (firstAffectedIndex < 0)
             {
                 throw new ConflictException(
-                    "The recurring break must fit entirely inside one existing working interval.");
+                    "Stalna pauza mora biti unutar postojećeg radnog vremena.");
+            }
+
+            // Keep at least one working interval on both sides of the break.
+            // Otherwise a break at the start or end of a workday is indistinguishable
+            // from a shortened working schedule when pauses are displayed.
+            if (startsAt <= baseStartsAt || endsAt >= baseEndsAt)
+            {
+                throw new ConflictException(
+                    "Stalna pauza ne može biti na početku ni na kraju radnog vremena. Mora ostati radno vrijeme prije i poslije pauze.");
             }
 
             const string bookingConflictSql = """
@@ -261,22 +316,23 @@ namespace AppointmentBooking.Api.Repositories.EmployeeWorkingHoursRepository
 
             List<(TimeOnly StartsAt, TimeOnly EndsAt)> replacement = [];
 
-            foreach (EmployeeWorkingHours hour in dayHours)
+            for (int index = 0; index < dayHours.Length; index++)
             {
-                if (hour.Id != containingInterval.Id)
+                if (index < firstAffectedIndex || index > lastAffectedIndex)
                 {
+                    EmployeeWorkingHours hour = dayHours[index];
                     replacement.Add((hour.StartsAt, hour.EndsAt));
                     continue;
                 }
 
-                if (hour.StartsAt < startsAt)
+                if (index == firstAffectedIndex && baseStartsAt < startsAt)
                 {
-                    replacement.Add((hour.StartsAt, startsAt));
+                    replacement.Add((baseStartsAt, startsAt));
                 }
 
-                if (endsAt < hour.EndsAt)
+                if (index == firstAffectedIndex && endsAt < baseEndsAt)
                 {
-                    replacement.Add((endsAt, hour.EndsAt));
+                    replacement.Add((endsAt, baseEndsAt));
                 }
             }
 

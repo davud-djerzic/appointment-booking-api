@@ -22,6 +22,7 @@ using AppointmentBooking.Api.Services.EmployeeAvailabilityBlocks;
 using Microsoft.AspNetCore.Routing.Matching;
 using Microsoft.Extensions.Options;
 using System.ComponentModel.DataAnnotations;
+using AppointmentBooking.Api.Time;
 
 namespace AppointmentBooking.Api.Services.Bookings
 {
@@ -635,7 +636,7 @@ namespace AppointmentBooking.Api.Services.Bookings
             long[] serviceIds = ValidateServiceIds(query.ServiceIds);
 
             DateOnly date = query.Date;
-            DateOnly today = DateOnly.FromDateTime(DateTimeOffset.Now.DateTime);
+            DateOnly today = SalonTimeZone.Today;
             if (date < today) throw new ValidationException("Availability cannot be requested for a date in the past.");
 
             await GetBookableEmployeeAsync(employeeId, cancellationToken);
@@ -658,9 +659,8 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             if (dailyWorkingHours.Length == 0) return new BookingAvailabilityResponse(employeeId, date, totalDurationMinutes, Array.Empty<AvailableTimeSlotResponse>());
 
-            DateTime localDate = date.ToDateTime(TimeOnly.MinValue);
-            DateTimeOffset dayStart = new(localDate, TimeZoneInfo.Local.GetUtcOffset(localDate));
-            DateTimeOffset dayEnd = dayStart.AddDays(1);
+            DateTimeOffset dayStart = SalonTimeZone.At(date, TimeOnly.MinValue);
+            DateTimeOffset dayEnd = SalonTimeZone.At(date.AddDays(1), TimeOnly.MinValue);
 
             IReadOnlyList<BookingTimeRange> scheduledBookings = await bookingRepository.GetScheduledTimeRangesAsync(employeeId, dayStart, dayEnd, cancellationToken);
             IReadOnlyList<BookingHold> activeHolds = await bookingHoldRepository.GetActiveForEmployeeAsync(employeeId, dayStart, dayEnd, cancellationToken);
@@ -674,15 +674,12 @@ namespace AppointmentBooking.Api.Services.Bookings
             List<AvailableTimeSlotResponse> availableSlots = new();
             TimeSpan slotInterval = TimeSpan.FromMinutes(bookingOptions.AvailabilitySlotIntervalMinutes);
 
-            DateTimeOffset now = DateTimeOffset.Now;
+            DateTimeOffset now = SalonTimeZone.Now;
 
             foreach (EmployeeWorkingHoursResponse workingHour in dailyWorkingHours)
             {
-                DateTime workingStartLocal = date.ToDateTime(workingHour.StartsAt);
-                DateTime workingEndLocal = date.ToDateTime(workingHour.EndsAt);
-
-                DateTimeOffset workingStart = new(workingStartLocal, TimeZoneInfo.Local.GetUtcOffset(workingStartLocal));
-                DateTimeOffset workingEnd = new(workingEndLocal, TimeZoneInfo.Local.GetUtcOffset(workingEndLocal));
+                DateTimeOffset workingStart = SalonTimeZone.At(date, workingHour.StartsAt);
+                DateTimeOffset workingEnd = SalonTimeZone.At(date, workingHour.EndsAt);
 
                 DateTimeOffset candidateStart = workingStart;
 
@@ -736,7 +733,7 @@ namespace AppointmentBooking.Api.Services.Bookings
                     query.EmployeeId,
                     cancellationToken);
 
-            DateOnly today = DateOnly.FromDateTime(DateTime.Today);
+            DateOnly today = SalonTimeZone.Today;
             HashSet<WeekDay> configuredWeekdays = workingHours
                 .Select(item => item.DayOfWeek)
                 .ToHashSet();
@@ -748,8 +745,8 @@ namespace AppointmentBooking.Api.Services.Bookings
             DateOnly scanTo = preliminaryTo.AddDays(365);
             DateTime localStart = scanFrom.ToDateTime(TimeOnly.MinValue);
             DateTime localEnd = scanTo.AddDays(1).ToDateTime(TimeOnly.MinValue);
-            DateTimeOffset rangeStart = new(localStart, TimeZoneInfo.Local.GetUtcOffset(localStart));
-            DateTimeOffset rangeEnd = new(localEnd, TimeZoneInfo.Local.GetUtcOffset(localEnd));
+            DateTimeOffset rangeStart = SalonTimeZone.At(localStart);
+            DateTimeOffset rangeEnd = SalonTimeZone.At(localEnd);
 
             IReadOnlyCollection<EmployeeUnavailability> unavailability =
                 await employeeUnavailabilityService.GetOverlappingAsync(
@@ -763,9 +760,9 @@ namespace AppointmentBooking.Api.Services.Bookings
                 item => item.Type == EmployeeUnavailabilityType.Vacation && item.IsAllDay))
             {
                 DateOnly vacationStart = DateOnly.FromDateTime(
-                    TimeZoneInfo.ConvertTime(vacation.StartsAt, TimeZoneInfo.Local).DateTime);
+                    TimeZoneInfo.ConvertTime(vacation.StartsAt, SalonTimeZone.Info).DateTime);
                 DateOnly vacationEndExclusive = DateOnly.FromDateTime(
-                    TimeZoneInfo.ConvertTime(vacation.EndsAt, TimeZoneInfo.Local).DateTime);
+                    TimeZoneInfo.ConvertTime(vacation.EndsAt, SalonTimeZone.Info).DateTime);
 
                 for (DateOnly vacationDate = vacationStart;
                     vacationDate < vacationEndExclusive;
@@ -913,7 +910,7 @@ namespace AppointmentBooking.Api.Services.Bookings
             
             const int maxDaysToSearch = 30;
 
-            DateOnly date = DateOnly.FromDateTime(DateTimeOffset.Now.DateTime);
+            DateOnly date = SalonTimeZone.Today;
 
             for (int dayOffset = 0; dayOffset < maxDaysToSearch; dayOffset++)
             {
