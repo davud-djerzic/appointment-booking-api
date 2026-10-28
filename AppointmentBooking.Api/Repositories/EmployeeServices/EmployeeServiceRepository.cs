@@ -145,8 +145,7 @@ namespace AppointmentBooking.Api.Repositories.EmployeeServices
                 SELECT 
                     e.id AS Id,
                     ua.first_name AS FirstName,
-                    ua.last_name AS LastName,
-                    ua.email AS Email
+                    ua.last_name AS LastName
                 FROM employee_services AS es
                 INNER JOIN employees e
                     ON e.id = es.employee_id

@@ -4,7 +4,9 @@ using AppointmentBooking.Api.DTOs.Bookings.Response;
 using AppointmentBooking.Api.DTOs.Common;
 using AppointmentBooking.Api.Services.Bookings;
 using Microsoft.AspNetCore.Authorization;
+using AppointmentBooking.Api.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AppointmentBooking.Api.Controllers
 {
@@ -16,6 +18,7 @@ namespace AppointmentBooking.Api.Controllers
     {
         [Authorize(Roles = "Customer")]
         [HttpPost("hold")]
+        [EnableRateLimiting(RateLimitPolicies.BookingHold)]
         [ProducesResponseType<BookingHoldResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
@@ -176,7 +179,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpGet("admin")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Employee, Admin")]
         [ProducesResponseType<PagedResponse<AdminBookingSummaryResponse>>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
@@ -227,7 +230,7 @@ namespace AppointmentBooking.Api.Controllers
             return Ok(response);
         }
 
-        [Authorize(Roles = "Customer,Admin")]
+        [Authorize(Roles = "Customer,Employee,Admin")]
         [HttpGet("bookable-employees")]
         [ProducesResponseType<IReadOnlyList<BookableEmployeeResponse>>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]

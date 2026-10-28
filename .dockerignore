@@ -12,3 +12,7 @@
 *.suo
 
 .env
+
+# Never copy local secrets into the image (any folder, any variant)
+**/.env
+**/.env.*

@@ -2,8 +2,8 @@ using AppointmentBooking.Api.Configuration;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
 using AppointmentBooking.Api.OpenApi;
+using AppointmentBooking.Api.RateLimiting;
 using AppointmentBooking.Api.Repositories;
-using AppointmentBooking.Api.Repositories.Appointments;
 using AppointmentBooking.Api.Repositories.Auth;
 using AppointmentBooking.Api.Repositories.BookingHolds;
 using AppointmentBooking.Api.Repositories.Bookings;
@@ -16,7 +16,6 @@ using AppointmentBooking.Api.Repositories.PasswordResetCodes;
 using AppointmentBooking.Api.Repositories.Salons;
 using AppointmentBooking.Api.Repositories.Services;
 using AppointmentBooking.Api.Repositories.UserAccounts;
-using AppointmentBooking.Api.Services.Appointments;
 using AppointmentBooking.Api.Services.Auth;
 using AppointmentBooking.Api.Services.BookedServices;
 using AppointmentBooking.Api.Services.Bookings;
@@ -30,6 +29,7 @@ using AppointmentBooking.Api.Services.PasswordReset;
 using AppointmentBooking.Api.Services.Profile;
 using AppointmentBooking.Api.Services.Salons;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
@@ -48,20 +48,6 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-});
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Frontend", policy =>
-    {
-        policy
-         .WithOrigins(
-             "http://localhost:5173",
-             "https://localhost:5173")
-         .AllowAnyHeader()
-         .AllowAnyMethod()
-         .AllowCredentials();
-    });
 });
 
 builder.Services
@@ -100,6 +86,25 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+
+// Railway terminates HTTPS at its edge and forwards plain HTTP to the API.
+// X-Forwarded-Proto tells the API the original request was HTTPS. Railway overwrites this
+// header at its edge and publishes no fixed proxy IP ranges, so no proxy address is pinned.
+// Only the scheme is taken from forwarded headers; the client IP for rate limiting is read
+// from X-Real-IP (RateLimiting:ClientIpHeader).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// Liveness endpoint for the Railway deploy healthcheck (GET /health).
+builder.Services.AddHealthChecks();
+
+// Rate limiting (see RateLimiting/RateLimitingServiceCollectionExtensions.cs).
+// On Railway set RateLimiting__ClientIpHeader=X-Real-IP.
+builder.Services.AddApiRateLimiting(builder.Configuration);
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi(options =>
@@ -147,7 +152,6 @@ builder.Services.AddHttpClient<IEmailService, MailjetEmailService>(client =>
 builder.Services.AddScoped<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
 builder.Services.AddScoped<IPasswordResetCodeRepository, PasswordResetCodeRepository>();
 builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
-builder.Services.AddScoped<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
 builder.Services.AddScoped<IUserAccountRepository, UserAccountRepository>();
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
@@ -155,8 +159,6 @@ builder.Services.AddScoped<IBookableServiceRepository, BookableServiceRepository
 builder.Services.AddScoped<IBookableServiceService, BookableServiceService>();
 builder.Services.AddScoped<IEmployeeServiceRepository, EmployeeServiceRepository>();
 builder.Services.AddScoped<IEmployeeServiceAssignmentService, EmployeeServiceAssignmentService>();
-builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
-builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 builder.Services.AddScoped<IEmployeeWorkingHoursRepository, EmployeeWorkingHoursRepository>();
 builder.Services.AddScoped<IEmployeeWorkingHoursService, EmployeeWorkingHoursService>();
 builder.Services.AddScoped<IEmployeeRecurringBreakService, EmployeeRecurringBreakService>();
@@ -176,8 +178,8 @@ builder.Services.AddScoped<ISalonService, SalonService>();
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
-app.UseCors("Frontend");
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -192,12 +194,24 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseHttpsRedirection();
+// In production HTTPS is terminated by Railway at its edge; the container itself only
+// listens on plain HTTP (port 8080), so a redirect here would only break the healthcheck.
+if (!app.Environment.IsProduction())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
+
+// After authentication so the booking-hold policy can count per signed-in user;
+// before authorization and the controllers, so rejected requests do no further work.
+app.UseRateLimiter();
+
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapHealthChecks("/health").DisableRateLimiting();
 
 app.Run();
 

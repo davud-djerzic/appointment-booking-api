@@ -10,6 +10,7 @@ namespace AppointmentBooking.Api.Controllers
     [Route("api/salons")]
     public sealed class SalonsController(ISalonService salonService) : ControllerBase
     {
+        [Authorize(Roles = "Employee, Admin")]
         [HttpPost]
         [ProducesResponseType<SalonResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]

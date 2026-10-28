@@ -1,6 +1,7 @@
 ﻿using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Request;
 using AppointmentBooking.Api.DTOs.EmployeeWorkingHours.Response;
 using AppointmentBooking.Api.Services.EmployeeWorkingHoursService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AppointmentBooking.Api.Controllers
@@ -9,6 +10,7 @@ namespace AppointmentBooking.Api.Controllers
     [Route("api/employees/{employeeId:long:min(1)}/working-hours")]
     public sealed class EmployeeWorkingHoursController(IEmployeeWorkingHoursService employeeWorkingHoursService) : ControllerBase
     {
+        [Authorize(Roles = "Employee, Admin")]
         [HttpPost]
         [ProducesResponseType<EmployeeWorkingHoursResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -51,6 +53,7 @@ namespace AppointmentBooking.Api.Controllers
             return Ok(response);
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpPut("{workingHoursId:long:min(1)}")]
         [ProducesResponseType<EmployeeWorkingHoursResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>( StatusCodes.Status400BadRequest)]
@@ -69,6 +72,7 @@ namespace AppointmentBooking.Api.Controllers
             return Ok(response);
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpDelete("{workingHoursId:long:min(1)}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

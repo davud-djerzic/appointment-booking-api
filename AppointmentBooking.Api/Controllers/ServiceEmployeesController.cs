@@ -1,5 +1,6 @@
 ﻿using AppointmentBooking.Api.DTOs.EmployeeServices.Responses;
 using AppointmentBooking.Api.Services.EmployeeServices;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AppointmentBooking.Api.Controllers
@@ -9,6 +10,7 @@ namespace AppointmentBooking.Api.Controllers
     public sealed class ServiceEmployeesController(IEmployeeServiceAssignmentService assignmentService) : ControllerBase
     {
         [HttpGet]
+        [Authorize(Roles = "Employee, Admin")]
         [ProducesResponseType<ServiceEmployeeResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> GetServiceEmployees(long serviceId, CancellationToken cancellationToken)

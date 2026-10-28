@@ -4,7 +4,9 @@ using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Services.Auth;
 using AppointmentBooking.Api.Services.PasswordReset;
 using Microsoft.AspNetCore.Authorization;
+using AppointmentBooking.Api.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.ComponentModel.DataAnnotations;
 
 namespace AppointmentBooking.Api.Controllers
@@ -14,6 +16,7 @@ namespace AppointmentBooking.Api.Controllers
     public sealed class AuthController(IAuthService authService, IPasswordResetService passwordResetService, IWebHostEnvironment environment) : ControllerBase
     {
         [HttpPost("register")]
+        [EnableRateLimiting(RateLimitPolicies.Register)]
         [ProducesResponseType<TokenResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -46,6 +49,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpPost("login")]
+        [EnableRateLimiting(RateLimitPolicies.Login)]
         [ProducesResponseType<TokenResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
@@ -76,6 +80,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpPost("refresh")]
+        [EnableRateLimiting(RateLimitPolicies.Refresh)]
         [ProducesResponseType<AuthenticationTokenResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
@@ -159,6 +164,7 @@ namespace AppointmentBooking.Api.Controllers
 
         [AllowAnonymous]
         [HttpPost("forgot-password")]
+        [EnableRateLimiting(RateLimitPolicies.ForgotPassword)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
         {
@@ -176,6 +182,7 @@ namespace AppointmentBooking.Api.Controllers
 
         [AllowAnonymous]
         [HttpPost("verify-reset-code")]
+        [EnableRateLimiting(RateLimitPolicies.ResetCode)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> VerifyResetCode(VerifyResetCodeRequest request, CancellationToken cancellationToken)
@@ -190,6 +197,7 @@ namespace AppointmentBooking.Api.Controllers
 
         [AllowAnonymous]
         [HttpPost("reset-password")]
+        [EnableRateLimiting(RateLimitPolicies.ResetCode)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ResetPassword(ResetPasswordRequest request,CancellationToken cancellationToken)

@@ -13,7 +13,7 @@ namespace AppointmentBooking.Api.Controllers
     [Route("api/[controller]")]
     public sealed class EmployeesController(IEmployeeService employeeService) : ControllerBase
     {
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Employee, Admin")]
         [HttpPost]
         [ProducesResponseType<EmployeeResponse>( StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -29,6 +29,7 @@ namespace AppointmentBooking.Api.Controllers
                 createdEmployee);
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpGet("{id:long:min(1)}")]
         [ProducesResponseType<EmployeeResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -39,6 +40,7 @@ namespace AppointmentBooking.Api.Controllers
             return Ok(employee);
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpGet]
         [ProducesResponseType<PagedResponse<EmployeeResponse>>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -50,6 +52,7 @@ namespace AppointmentBooking.Api.Controllers
             return Ok(result);
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpPut("{id:long:min(1)}")]
         [ProducesResponseType<EmployeeResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -63,6 +66,7 @@ namespace AppointmentBooking.Api.Controllers
             return Ok(updatedEmployee);
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpDelete("{id:long:min(1)}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -74,6 +78,7 @@ namespace AppointmentBooking.Api.Controllers
             return NoContent();
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpPost("{id:long:min(1)}/activate")]
         [ProducesResponseType<EmployeeResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

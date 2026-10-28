@@ -1,5 +1,6 @@
 ﻿using AppointmentBooking.Api.DTOs.EmployeeServices.Responses;
 using AppointmentBooking.Api.Services.EmployeeServices;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AppointmentBooking.Api.Controllers
@@ -8,6 +9,7 @@ namespace AppointmentBooking.Api.Controllers
     [Route("api/employees/{employeeId:long:min(1)}/services")]
     public sealed class EmployeeServiceController(IEmployeeServiceAssignmentService assignmentService) : ControllerBase
     {
+        [Authorize(Roles = "Employee, Admin")]
         [HttpPost("{serviceId:long:min(1)}")]
         [ProducesResponseType<EmployeeServiceAssignmentResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<EmployeeServiceAssignmentResponse>(StatusCodes.Status200OK)]
@@ -59,6 +61,7 @@ namespace AppointmentBooking.Api.Controllers
             };
         }
 
+        [Authorize(Roles = "Employee, Admin")]
         [HttpDelete("{serviceId:long:min(1)}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
