@@ -17,6 +17,7 @@ namespace AppointmentBooking.Api.Controllers
     {
         [HttpPost("register")]
         [EnableRateLimiting(RateLimitPolicies.Register)]
+        [LimitPasswordHashing]
         [ProducesResponseType<TokenResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -50,6 +51,7 @@ namespace AppointmentBooking.Api.Controllers
 
         [HttpPost("login")]
         [EnableRateLimiting(RateLimitPolicies.Login)]
+        [LimitPasswordHashing]
         [ProducesResponseType<TokenResponse>(StatusCodes.Status200OK)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
@@ -165,6 +167,7 @@ namespace AppointmentBooking.Api.Controllers
         [AllowAnonymous]
         [HttpPost("forgot-password")]
         [EnableRateLimiting(RateLimitPolicies.ForgotPassword)]
+        [LimitPasswordHashing]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
         {
@@ -183,6 +186,7 @@ namespace AppointmentBooking.Api.Controllers
         [AllowAnonymous]
         [HttpPost("verify-reset-code")]
         [EnableRateLimiting(RateLimitPolicies.ResetCode)]
+        [LimitPasswordHashing]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> VerifyResetCode(VerifyResetCodeRequest request, CancellationToken cancellationToken)
@@ -198,6 +202,7 @@ namespace AppointmentBooking.Api.Controllers
         [AllowAnonymous]
         [HttpPost("reset-password")]
         [EnableRateLimiting(RateLimitPolicies.ResetCode)]
+        [LimitPasswordHashing]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ResetPassword(ResetPasswordRequest request,CancellationToken cancellationToken)

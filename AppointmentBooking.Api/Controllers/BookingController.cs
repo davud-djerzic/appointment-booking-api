@@ -159,23 +159,58 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [Authorize(Roles = "Employee, Admin")]
-        [HttpPost("staff")]
-        [ProducesResponseType<EmployeeBookingDetailsResponse>(StatusCodes.Status201Created)]
+        [HttpPost("staff/hold")]
+        [EnableRateLimiting(RateLimitPolicies.BookingHold)]
+        [ProducesResponseType<BookingHoldResponse>(StatusCodes.Status201Created)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
-        public async Task<ActionResult<EmployeeBookingDetailsResponse>> CreateStaffBooking(
+        public async Task<ActionResult<BookingHoldResponse>> CreateStaffHold(
             CreateStaffBookingRequest request,
             CancellationToken cancellationToken)
         {
-            EmployeeBookingDetailsResponse booking =
-                await bookingService.CreateStaffBookingAsync(
+            BookingHoldResponse hold =
+                await bookingService.CreateStaffHoldAsync(
                     request,
                     cancellationToken);
 
+            return StatusCode(StatusCodes.Status201Created, hold);
+        }
+
+        [Authorize(Roles = "Employee, Admin")]
+        [HttpPost("staff/hold/{holdToken:guid}/confirm")]
+        [ProducesResponseType<EmployeeBookingDetailsResponse>(StatusCodes.Status201Created)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<EmployeeBookingDetailsResponse>> ConfirmStaffHold(
+            Guid holdToken,
+            CancellationToken cancellationToken)
+        {
+            EmployeeBookingDetailsResponse booking =
+                await bookingService.ConfirmStaffHoldAsync(
+                    holdToken,
+                    cancellationToken);
+
             return StatusCode(StatusCodes.Status201Created, booking);
+        }
+
+        [Authorize(Roles = "Employee, Admin")]
+        [HttpDelete("staff/hold/{holdToken:guid}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> CancelStaffHold(
+            Guid holdToken,
+            CancellationToken cancellationToken)
+        {
+            await bookingService.CancelStaffHoldAsync(holdToken, cancellationToken);
+
+            return NoContent();
         }
 
         [HttpGet("admin")]

@@ -41,8 +41,50 @@ namespace AppointmentBooking.Api.Repositories.Bookings
                     cancellationToken: cancellationToken));
         }
 
-        public async Task<BookingCreationResult> CreateAsync(Booking booking, IReadOnlyList<Appointment> appointments, CancellationToken cancellationToken)
+        // Upcoming bookings of a customer: scheduled and not started yet.
+        // Cancelled, completed and past bookings are not counted.
+        private const string CountActiveCustomerBookingsSql = """
+            SELECT COUNT(*)::int
+            FROM bookings
+            WHERE customer_id = @CustomerId
+              AND status = 'scheduled'
+              AND starts_at > NOW();
+            """;
+
+        public async Task<int> CountActiveCustomerBookingsAsync(long customerId, CancellationToken cancellationToken)
         {
+            await using NpgsqlConnection connection =
+                await dataSource.OpenConnectionAsync(cancellationToken);
+
+            return await connection.ExecuteScalarAsync<int>(
+                new CommandDefinition(
+                    CountActiveCustomerBookingsSql,
+                    new { CustomerId = customerId },
+                    cancellationToken: cancellationToken));
+        }
+
+        // Staff bookings (walk-in) have no limit.
+        public Task<BookingCreationResult> CreateAsync(Booking booking, IReadOnlyList<Appointment> appointments, CancellationToken cancellationToken) =>
+            CreateCoreAsync(booking, appointments, maxActiveCustomerBookings: null, cancellationToken);
+
+        public Task<BookingCreationResult> CreateCustomerBookingAsync(Booking booking, IReadOnlyList<Appointment> appointments, int maxActiveBookings, CancellationToken cancellationToken) =>
+            CreateCoreAsync(booking, appointments, maxActiveBookings, cancellationToken);
+
+        private async Task<BookingCreationResult> CreateCoreAsync(
+            Booking booking,
+            IReadOnlyList<Appointment> appointments,
+            int? maxActiveCustomerBookings,
+            CancellationToken cancellationToken)
+        {
+            // Locks only this customer's row until the transaction ends, so parallel
+            // confirmations of the same customer are counted one after another.
+            const string lockCustomerSql = """
+                SELECT 1
+                FROM customers
+                WHERE id = @CustomerId
+                FOR UPDATE;
+                """;
+
             const string createBookingSql = """
                 INSERT INTO bookings
                 (
@@ -127,6 +169,31 @@ namespace AppointmentBooking.Api.Repositories.Bookings
 
             try
             {
+                if (maxActiveCustomerBookings is int maxActiveBookings)
+                {
+                    long customerId = booking.CustomerId
+                        ?? throw new InvalidOperationException("A customer booking must have a customer ID.");
+
+                    await connection.ExecuteAsync(
+                        new CommandDefinition(
+                            lockCustomerSql,
+                            new { CustomerId = customerId },
+                            transaction: transaction,
+                            cancellationToken: cancellationToken));
+
+                    int activeBookings = await connection.ExecuteScalarAsync<int>(
+                        new CommandDefinition(
+                            CountActiveCustomerBookingsSql,
+                            new { CustomerId = customerId },
+                            transaction: transaction,
+                            cancellationToken: cancellationToken));
+
+                    if (activeBookings >= maxActiveBookings)
+                    {
+                        throw new ActiveBookingLimitReachedException(maxActiveBookings);
+                    }
+                }
+
                 Booking createdBooking =
                     await connection.QuerySingleAsync<Booking>(
                         new CommandDefinition(

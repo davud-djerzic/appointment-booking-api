@@ -3,6 +3,7 @@ using AppointmentBooking.Api.DTOs.Auth.Request;
 using AppointmentBooking.Api.Exceptions;
 using AppointmentBooking.Api.Models;
 using AppointmentBooking.Api.Models.Enums;
+using AppointmentBooking.Api.RateLimiting;
 using AppointmentBooking.Api.Repositories.Auth;
 using AppointmentBooking.Api.Repositories.UserAccounts;
 using Microsoft.AspNetCore.Identity;
@@ -12,9 +13,14 @@ namespace AppointmentBooking.Api.Services.Auth
 {
     public sealed class AuthService(IUserAccountRepository userAccountRepository, IAuthRepository authRepository, 
         IPasswordHasher<UserAccount> passwordHasher, IAccessTokenService accessTokenService, 
-        IRefreshTokenService refreshTokenService, IOptions<JwtOptions> jwtOptions) : IAuthService
+        IRefreshTokenService refreshTokenService, IOptions<JwtOptions> jwtOptions, IAttemptLimiter attemptLimiter) : IAuthService
     {
         private readonly JwtOptions options = jwtOptions.Value;
+
+        // Used only to spend the same hashing time when the account does not exist or is inactive.
+        private static readonly UserAccount TimingAccount = new() { PasswordHash = string.Empty };
+        private static readonly string TimingPasswordHash =
+            new PasswordHasher<UserAccount>().HashPassword(TimingAccount, Guid.NewGuid().ToString());
 
         public async Task<AuthenticationResult> RegisterCustomerAsync(RegisterCustomerRequest request, CancellationToken cancellationToken)
         {
@@ -59,12 +65,24 @@ namespace AppointmentBooking.Api.Services.Auth
         {
             string email = request.Email.Trim();
 
+            // Counted before the password is checked, so parallel guesses cannot slip past the limit.
+            // Unknown emails are counted too, so a block does not reveal whether an account exists.
+            AttemptResult attempt = attemptLimiter.TryAttempt(AttemptPolicy.Login, email);
+            if (!attempt.IsAllowed) throw new TooManyAttemptsException(attempt.RetryAfter);
+
             UserAccount? userAccount = await userAccountRepository.GetByEmailAsync(email, cancellationToken);
-            if (userAccount is null) throw new UnauthorizedException("Invalid email or password.");
-            if (!userAccount.IsActive) throw new UnauthorizedException("Invalid email or password.");
+            if (userAccount is null || !userAccount.IsActive)
+            {
+                // Same password hashing work as for an existing account, so the response time
+                // does not reveal whether the email is registered.
+                passwordHasher.VerifyHashedPassword(TimingAccount, TimingPasswordHash, request.Password);
+                throw new UnauthorizedException("Invalid email or password.");
+            }
 
             PasswordVerificationResult passwordResult = passwordHasher.VerifyHashedPassword(userAccount, userAccount.PasswordHash, request.Password);
             if (passwordResult == PasswordVerificationResult.Failed) throw new UnauthorizedException("Invalid email or password.");
+
+            attemptLimiter.Reset(AttemptPolicy.Login, email);
 
             Guid familyId = Guid.NewGuid();
 

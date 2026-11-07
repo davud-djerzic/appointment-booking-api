@@ -31,6 +31,7 @@ using AppointmentBooking.Api.Services.Salons;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using StackExchange.Redis;
@@ -106,6 +107,12 @@ builder.Services.AddHealthChecks();
 // On Railway set RateLimiting__ClientIpHeader=X-Real-IP.
 builder.Services.AddApiRateLimiting(builder.Configuration);
 
+// Login and reset-code limits per email address (RateLimiting/AttemptLimiter.cs).
+builder.Services.AddSingleton<IAttemptLimiter, AttemptLimiter>();
+
+// At most 4 password-hashing requests at a time for the whole API (RateLimiting/PasswordHashingLimiter.cs).
+builder.Services.AddSingleton<PasswordHashingLimiter>();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi(options =>
 {
@@ -119,9 +126,45 @@ var connectionString = builder.Configuration.GetConnectionString("Database")
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
-builder.Services.Configure<RedisOptions>(builder.Configuration.GetSection(RedisOptions.SectionName));
-builder.Services.Configure<MailjetOptions>(builder.Configuration.GetSection(MailjetOptions.SectionName));
+// Configuration is validated when the API starts: a missing or invalid Railway variable
+// stops the deploy with a clear message instead of failing on the first request.
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .Validate(
+        options => !string.IsNullOrWhiteSpace(options.SecretKey) &&
+                   Encoding.UTF8.GetByteCount(options.SecretKey) >= 32,
+        "Jwt:SecretKey must be set and at least 32 bytes long (Jwt__SecretKey).")
+    .Validate(
+        options => !string.IsNullOrWhiteSpace(options.Issuer) &&
+                   !string.IsNullOrWhiteSpace(options.Audience),
+        "Jwt:Issuer and Jwt:Audience must be set.")
+    .Validate(
+        options => options.AccessTokenMinutes > 0 && options.RefreshTokenDays > 0,
+        "Jwt:AccessTokenMinutes and Jwt:RefreshTokenDays must be greater than 0.")
+    .ValidateOnStart();
+
+builder.Services.AddOptions<RedisOptions>()
+    .Bind(builder.Configuration.GetSection(RedisOptions.SectionName))
+    .Validate(
+        options => !string.IsNullOrWhiteSpace(options.ConnectionString),
+        "Redis:ConnectionString must be set (Redis__ConnectionString).")
+    .ValidateOnStart();
+
+OptionsBuilder<MailjetOptions> mailjetOptions = builder.Services.AddOptions<MailjetOptions>()
+    .Bind(builder.Configuration.GetSection(MailjetOptions.SectionName));
+
+// Local development may run without Mailjet; everywhere else the API does not start without it.
+if (!builder.Environment.IsDevelopment())
+{
+    mailjetOptions
+        .Validate(
+            options => !string.IsNullOrWhiteSpace(options.ApiKey) &&
+                       !string.IsNullOrWhiteSpace(options.SecretKey) &&
+                       !string.IsNullOrWhiteSpace(options.FromEmail) &&
+                       !string.IsNullOrWhiteSpace(options.FromName),
+            "Mailjet:ApiKey, Mailjet:SecretKey, Mailjet:FromEmail and Mailjet:FromName must be set (Mailjet__*).")
+        .ValidateOnStart();
+}
 
 builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
     NpgsqlDataSource.Create(connectionString));
@@ -141,7 +184,15 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 
 builder.Services.AddSingleton<IBookingHoldRepository, BookingHoldRepository>();
 
-builder.Services.Configure<BookingOptions>(builder.Configuration.GetSection(BookingOptions.SectionName));
+builder.Services.AddOptions<BookingOptions>()
+    .Bind(builder.Configuration.GetSection(BookingOptions.SectionName))
+    .Validate(
+        options => options.HoldDurationInMinutes > 0 && options.AvailabilitySlotIntervalMinutes > 0,
+        "Bookings:HoldDurationInMinutes and Bookings:AvailabilitySlotIntervalMinutes must be greater than 0.")
+    .Validate(
+        options => options.MaxActiveBookingsPerCustomer > 0,
+        "Bookings:MaxActiveBookingsPerCustomer must be greater than 0.")
+    .ValidateOnStart();
 builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddHttpContextAccessor();
@@ -149,6 +200,11 @@ builder.Services.AddHttpClient<IEmailService, MailjetEmailService>(client =>
 {
     client.BaseAddress = new Uri("https://api.mailjet.com/");
 });
+
+// Emails are sent in the background (see Services/Email/EmailBackgroundService.cs).
+builder.Services.AddSingleton<EmailQueue>();
+builder.Services.AddSingleton<IEmailQueue>(serviceProvider => serviceProvider.GetRequiredService<EmailQueue>());
+builder.Services.AddHostedService<EmailBackgroundService>();
 builder.Services.AddScoped<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
 builder.Services.AddScoped<IPasswordResetCodeRepository, PasswordResetCodeRepository>();
 builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();

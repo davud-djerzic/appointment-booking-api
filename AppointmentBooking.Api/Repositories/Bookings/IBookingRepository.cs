@@ -9,6 +9,16 @@ namespace AppointmentBooking.Api.Repositories.Bookings
 
         Task<BookingCreationResult> CreateAsync(Booking booking, IReadOnlyList<Appointment> appointments, CancellationToken cancellationToken);
 
+        /// <summary>
+        /// Creates a customer booking only if the customer has fewer than <paramref name="maxActiveBookings"/>
+        /// upcoming bookings; the check and the insert run in one transaction.
+        /// Throws ActiveBookingLimitReachedException (409) when the limit is reached.
+        /// </summary>
+        Task<BookingCreationResult> CreateCustomerBookingAsync(Booking booking, IReadOnlyList<Appointment> appointments, int maxActiveBookings, CancellationToken cancellationToken);
+
+        /// <summary>Upcoming bookings of the customer: status scheduled and not started yet.</summary>
+        Task<int> CountActiveCustomerBookingsAsync(long customerId, CancellationToken cancellationToken);
+
         Task<BookingReadResult?> GetByIdAsync(long bookingId, CancellationToken cancellationToken);
 
         Task<PagedResult<BookingListItem>> GetCustomerBookingsAsync(long customerId, BookingSearchCriteria criteria, CancellationToken cancellationToken);

@@ -15,7 +15,7 @@ namespace AppointmentBooking.Api.DTOs.Auth.Request
         public string Code { get; init; } = string.Empty;
 
         [Required]
-        [MinLength(8)]
+        [StringLength(100, MinimumLength = 8, ErrorMessage = "New password must contain between 8 and 100 characters.")]
         public string NewPassword { get; init; } = string.Empty;
 
         [Required]

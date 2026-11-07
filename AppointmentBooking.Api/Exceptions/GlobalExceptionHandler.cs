@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 
 namespace AppointmentBooking.Api.Exceptions
 {
@@ -82,6 +83,14 @@ namespace AppointmentBooking.Api.Exceptions
                         Instance = httpContext.Request.Path
                     },
 
+                TooManyAttemptsException => new ProblemDetails
+                {
+                    Status = StatusCodes.Status429TooManyRequests,
+                    Title = "Too many requests",
+                    Detail = exception.Message,
+                    Instance = httpContext.Request.Path
+                },
+
                 _ => new ProblemDetails
                 {
                     Status = StatusCodes.Status500InternalServerError,
@@ -96,10 +105,24 @@ namespace AppointmentBooking.Api.Exceptions
                 logger.LogError(exception, "Unhandled exception while processing {Method} {Path}", httpContext.Request.Method, httpContext.Request.Path);
             } else
             {
-                logger.LogWarning(exception, "Request failed with status code {StatusCode}", problemDeatils.Status);
+                // Expected client errors: one line, without a stack trace.
+                logger.LogWarning(
+                    "Request failed with status code {StatusCode}: {ExceptionType} - {Detail} ({Method} {Path})",
+                    problemDeatils.Status,
+                    exception.GetType().Name,
+                    problemDeatils.Detail,
+                    httpContext.Request.Method,
+                    httpContext.Request.Path);
             }
 
             problemDeatils.Extensions["traceId"] = httpContext.TraceIdentifier;
+
+            if (exception is TooManyAttemptsException tooManyAttempts)
+            {
+                httpContext.Response.Headers.RetryAfter =
+                    Math.Max(1, (int)Math.Ceiling(tooManyAttempts.RetryAfter.TotalSeconds))
+                        .ToString(CultureInfo.InvariantCulture);
+            }
 
             httpContext.Response.StatusCode = problemDeatils.Status ?? StatusCodes.Status500InternalServerError;
 

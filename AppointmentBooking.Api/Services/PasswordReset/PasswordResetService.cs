@@ -1,4 +1,6 @@
-﻿using AppointmentBooking.Api.Models;
+﻿using AppointmentBooking.Api.Exceptions;
+using AppointmentBooking.Api.Models;
+using AppointmentBooking.Api.RateLimiting;
 using AppointmentBooking.Api.Repositories.Auth;
 using AppointmentBooking.Api.Repositories.PasswordResetCodes;
 using AppointmentBooking.Api.Repositories.UserAccounts;
@@ -9,19 +11,32 @@ using System.Security.Cryptography;
 
 namespace AppointmentBooking.Api.Services.PasswordReset
 {
-    public sealed class PasswordResetService(IUserAccountRepository userAccountRepository, IPasswordResetCodeRepository passwordResetCodeRepository, IAuthRepository authRepository,IEmailService emailService, IPasswordHasher<UserAccount> passwordHasher) : IPasswordResetService
+    public sealed class PasswordResetService(IUserAccountRepository userAccountRepository, IPasswordResetCodeRepository passwordResetCodeRepository, IAuthRepository authRepository, IEmailQueue emailQueue, IPasswordHasher<UserAccount> passwordHasher, IAttemptLimiter attemptLimiter) : IPasswordResetService
     {
         private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
 
         private const short MaxAttempts = 5;
 
+        // Used only to spend the same hashing time when the email is not registered.
+        private static readonly UserAccount TimingAccount = new() { PasswordHash = string.Empty };
+
         public async Task RequestResetAsync(string email, CancellationToken cancellationToken)
         {
             string normalizedEmail = email.Trim();
 
+            // Counted for every email, registered or not, so a block reveals nothing.
+            AttemptResult attempt = attemptLimiter.TryAttempt(AttemptPolicy.PasswordResetRequest, normalizedEmail);
+            if (!attempt.IsAllowed) throw new TooManyAttemptsException(attempt.RetryAfter);
+
             UserAccount? userAccount = await userAccountRepository.GetByEmailAsync(normalizedEmail, cancellationToken);
 
-            if (userAccount is null || !userAccount.IsActive) return;
+            if (userAccount is null || !userAccount.IsActive)
+            {
+                // Same hashing work as for a real account, so the response time does not
+                // reveal whether the email is registered (the email itself is sent in the background).
+                passwordHasher.HashPassword(TimingAccount, "000000");
+                return;
+            }
 
             await passwordResetCodeRepository.InvalidateActiveAsync(userAccount.Id, cancellationToken);
 
@@ -49,11 +64,11 @@ namespace AppointmentBooking.Api.Services.PasswordReset
                 passwordResetCode,
                 cancellationToken);
 
-            await emailService.SendAsync(
-                toEmail: userAccount.Email,
-                toName: $"{userAccount.FirstName} {userAccount.LastName}",
-                subject: "Kod za promjenu lozinke",
-                textPart: $"""
+            emailQueue.Enqueue(new EmailMessage(
+                ToEmail: userAccount.Email,
+                ToName: $"{userAccount.FirstName} {userAccount.LastName}",
+                Subject: "Kod za promjenu lozinke",
+                TextPart: $"""
                        Pozdrav {userAccount.FirstName},
 
                        Vaš kod za promjenu lozinke je:
@@ -67,7 +82,7 @@ namespace AppointmentBooking.Api.Services.PasswordReset
                        Lijep pozdrav,
                        Salon
                        """,
-                htmlPart: $"""
+                HtmlPart: $"""
                        <h2>Promjena lozinke</h2>
 
                        <p>Pozdrav {userAccount.FirstName},</p>
@@ -93,8 +108,7 @@ namespace AppointmentBooking.Api.Services.PasswordReset
                            Lijep pozdrav,<br/>
                            Salon
                        </p>
-                       """,
-                cancellationToken);
+                       """));
 
         }
         public async Task VerifyCodeAsync(string email, string code, CancellationToken cancellationToken)
@@ -223,11 +237,14 @@ namespace AppointmentBooking.Api.Services.PasswordReset
                 userAccount.Id,
                 cancellationToken);
 
-            await emailService.SendAsync(
-                toEmail: userAccount.Email,
-                toName: $"{userAccount.FirstName} {userAccount.LastName}",
-                subject: "Lozinka je promijenjena",
-                textPart: $"""
+            // Someone who was blocked after wrong passwords can sign in with the new one right away.
+            attemptLimiter.Reset(AttemptPolicy.Login, userAccount.Email);
+
+            emailQueue.Enqueue(new EmailMessage(
+                ToEmail: userAccount.Email,
+                ToName: $"{userAccount.FirstName} {userAccount.LastName}",
+                Subject: "Lozinka je promijenjena",
+                TextPart: $"""
                        Pozdrav {userAccount.FirstName},
 
                        Vaša lozinka je uspješno promijenjena.
@@ -238,7 +255,7 @@ namespace AppointmentBooking.Api.Services.PasswordReset
                        Lijep pozdrav,
                        Salon
                        """,
-                htmlPart: $"""
+                HtmlPart: $"""
                        <h2>Lozinka je promijenjena</h2>
 
                        <p>Pozdrav {userAccount.FirstName},</p>
@@ -256,8 +273,7 @@ namespace AppointmentBooking.Api.Services.PasswordReset
                            Lijep pozdrav,<br/>
                            Salon
                        </p>
-                       """,
-                cancellationToken);
+                       """));
         }
     }
 }

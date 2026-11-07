@@ -1,5 +1,6 @@
 ﻿using AppointmentBooking.Api.DTOs.Profile.Request;
 using AppointmentBooking.Api.DTOs.Profile.Response;
+using AppointmentBooking.Api.RateLimiting;
 using AppointmentBooking.Api.Services.Profile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,6 +38,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpPost("me/change-password")]
+        [LimitPasswordHashing]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
@@ -51,6 +53,7 @@ namespace AppointmentBooking.Api.Controllers
         }
 
         [HttpDelete("me")]
+        [LimitPasswordHashing]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]

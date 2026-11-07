@@ -16,12 +16,12 @@ namespace AppointmentBooking.Api.Tests.RateLimiting
     public sealed class RateLimitingPolicyTests
     {
         [Fact]
-        public async Task Login_Allows10RequestsPerMinute_ThenReturns429()
+        public async Task Login_Allows30RequestsPerMinute_ThenReturns429()
         {
             await using WebApplication app = await CreateAppAsync(clientIpHeader: "X-Real-IP");
             HttpClient client = app.GetTestClient();
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 30; i++)
             {
                 (await PostAsync(client, "/login", "85.10.1.5")).StatusCode.Should().Be(HttpStatusCode.OK);
             }
@@ -38,7 +38,7 @@ namespace AppointmentBooking.Api.Tests.RateLimiting
             await using WebApplication app = await CreateAppAsync(clientIpHeader: "X-Real-IP");
             HttpClient client = app.GetTestClient();
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 30; i++)
             {
                 await PostAsync(client, "/login", "85.10.1.5");
             }
@@ -48,18 +48,41 @@ namespace AppointmentBooking.Api.Tests.RateLimiting
         }
 
         [Fact]
-        public async Task ForgotPassword_Allows3Requests_ThenReturns429()
+        public async Task ForgotPassword_Allows10Requests_ThenReturns429()
         {
             await using WebApplication app = await CreateAppAsync(clientIpHeader: "X-Real-IP");
             HttpClient client = app.GetTestClient();
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 10; i++)
             {
                 (await PostAsync(client, "/forgot-password", "85.10.1.5")).StatusCode.Should().Be(HttpStatusCode.OK);
             }
 
-            (await PostAsync(client, "/forgot-password", "85.10.1.5")).StatusCode
-                .Should().Be(HttpStatusCode.TooManyRequests);
+            HttpResponseMessage rejected = await PostAsync(client, "/forgot-password", "85.10.1.5");
+
+            rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+            rejected.Headers.RetryAfter.Should().NotBeNull();
+            rejected.Headers.RetryAfter!.Delta.Should().NotBeNull();
+            rejected.Headers.RetryAfter!.Delta!.Value.Should().BePositive();
+        }
+
+        [Fact]
+        public async Task ResetCode_Allows10Requests_ThenReturns429WithRetryAfter()
+        {
+            await using WebApplication app = await CreateAppAsync(clientIpHeader: "X-Real-IP");
+            HttpClient client = app.GetTestClient();
+
+            for (int i = 0; i < 10; i++)
+            {
+                (await PostAsync(client, "/verify-reset-code", "85.10.1.5")).StatusCode.Should().Be(HttpStatusCode.OK);
+            }
+
+            HttpResponseMessage rejected = await PostAsync(client, "/verify-reset-code", "85.10.1.5");
+
+            rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+            rejected.Headers.RetryAfter.Should().NotBeNull();
+            rejected.Headers.RetryAfter!.Delta.Should().NotBeNull();
+            rejected.Headers.RetryAfter!.Delta!.Value.Should().BePositive();
         }
 
         [Fact]
@@ -68,7 +91,7 @@ namespace AppointmentBooking.Api.Tests.RateLimiting
             await using WebApplication app = await CreateAppAsync(clientIpHeader: "X-Real-IP");
             HttpClient client = app.GetTestClient();
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 20; i++)
             {
                 await PostAsync(client, "/register", "85.10.1.5");
             }
@@ -86,7 +109,7 @@ namespace AppointmentBooking.Api.Tests.RateLimiting
             HttpClient client = app.GetTestClient();
 
             // A client inventing a new X-Real-IP on every request must still be limited.
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 30; i++)
             {
                 await PostAsync(client, "/login", $"85.10.1.{i + 1}");
             }
@@ -112,6 +135,7 @@ namespace AppointmentBooking.Api.Tests.RateLimiting
             app.MapPost("/login", () => Results.Ok()).RequireRateLimiting(RateLimitPolicies.Login);
             app.MapPost("/register", () => Results.Ok()).RequireRateLimiting(RateLimitPolicies.Register);
             app.MapPost("/forgot-password", () => Results.Ok()).RequireRateLimiting(RateLimitPolicies.ForgotPassword);
+            app.MapPost("/verify-reset-code", () => Results.Ok()).RequireRateLimiting(RateLimitPolicies.ResetCode);
 
             await app.StartAsync();
             return app;

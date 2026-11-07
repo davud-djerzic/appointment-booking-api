@@ -10,6 +10,7 @@ namespace AppointmentBooking.Api.DTOs.Auth.Request
         public required string Email { get; init; }
 
         [Required(ErrorMessage = "Password is required.")]
+        [StringLength(100, ErrorMessage = "Password cannot exceed 100 characters.")]
         public required string Password { get; init; }
     }
 }

@@ -36,6 +36,8 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             Customer customer = await GetActiveCustomerAsync(cancellationToken);
 
+            await EnsureActiveBookingLimitNotReachedAsync(customer.Id, cancellationToken);
+
             DateTimeOffset requestedStartsAt = request.StartsAt;
             if (requestedStartsAt <= DateTimeOffset.UtcNow) throw new ValidationException("Booking start time must be in the future.");
 
@@ -200,7 +202,13 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             try
             {
-                BookingCreationResult result = await bookingRepository.CreateAsync(booking, appointments, cancellationToken);
+                // The limit is checked again inside the booking transaction, so confirming
+                // several holds at the same time cannot exceed it.
+                BookingCreationResult result = await bookingRepository.CreateCustomerBookingAsync(
+                    booking,
+                    appointments,
+                    bookingOptions.MaxActiveBookingsPerCustomer,
+                    cancellationToken);
 
                 await DeleteHoldSafelyAsync(hold);
 
@@ -497,7 +505,9 @@ namespace AppointmentBooking.Api.Services.Bookings
                 appointments);
         }
 
-        public async Task<EmployeeBookingDetailsResponse> CreateStaffBookingAsync(
+        // Staff bookings use the same flow as customers: pick a free slot, hold it, confirm.
+        // The hold lives in the same Redis store, so customers and staff cannot take the same time.
+        public async Task<BookingHoldResponse> CreateStaffHoldAsync(
             CreateStaffBookingRequest request,
             CancellationToken cancellationToken)
         {
@@ -509,32 +519,10 @@ namespace AppointmentBooking.Api.Services.Bookings
                 throw new ValidationException("Customer first and last name are required.");
             }
 
-            Employee employee;
-            if (currentUser.Role == UserRole.Employee)
-            {
-                employee = await GetActiveEmployeeAsync(cancellationToken);
+            EmployeeBookingContext employeeContext =
+                await GetStaffBookingEmployeeAsync(request.EmployeeId, cancellationToken);
 
-                if (request.EmployeeId.HasValue && request.EmployeeId.Value != employee.Id)
-                {
-                    throw new UnauthorizedException("An employee can only create bookings for themselves.");
-                }
-            }
-            else if (currentUser.Role == UserRole.Admin)
-            {
-                if (!request.EmployeeId.HasValue || request.EmployeeId.Value <= 0)
-                {
-                    throw new ValidationException("An employee must be selected.");
-                }
-
-                EmployeeBookingContext employeeContext = await GetBookableEmployeeAsync(
-                    request.EmployeeId.Value,
-                    cancellationToken);
-                employee = employeeContext.Employee;
-            }
-            else
-            {
-                throw new UnauthorizedException("The current user is not authorized to create staff bookings.");
-            }
+            long employeeId = employeeContext.Employee.Id;
 
             DateTimeOffset startsAt = request.StartsAt.ToUniversalTime();
             if (startsAt <= DateTimeOffset.UtcNow)
@@ -544,15 +532,21 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             long[] serviceIds = ValidateServiceIds(request.ServiceIds);
             HoldSchedule schedule = await BuildHoldScheduleAsync(
-                employee.Id,
+                employeeId,
                 startsAt,
                 serviceIds,
                 cancellationToken);
 
+            DateTimeOffset endsAt = schedule.EndsAt.ToUniversalTime();
+            if (endsAt <= startsAt)
+            {
+                throw new ValidationException("Booking end time must be after the start time.");
+            }
+
             if (!await employeeWorkingHoursService.IsWithinWorkingHoursAsync(
-                    employee.Id,
+                    employeeId,
                     startsAt,
-                    schedule.EndsAt,
+                    endsAt,
                     cancellationToken))
             {
                 throw new ConflictException("The selected time is outside the employee's working hours.");
@@ -560,9 +554,9 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             IReadOnlyCollection<EmployeeUnavailability> unavailability =
                 await employeeUnavailabilityService.GetOverlappingAsync(
-                    employee.Id,
+                    employeeId,
                     startsAt,
-                    schedule.EndsAt,
+                    endsAt,
                     cancellationToken);
 
             if (unavailability.Count > 0)
@@ -571,27 +565,110 @@ namespace AppointmentBooking.Api.Services.Bookings
             }
 
             if (await bookingRepository.HasScheduledOverlapAsync(
-                    employee.Id,
+                    employeeId,
                     startsAt,
-                    schedule.EndsAt,
+                    endsAt,
                     cancellationToken))
             {
                 throw new ConflictException("The employee is already booked for the selected time.");
             }
 
-            IReadOnlyList<BookingHold> activeHolds =
-                await bookingHoldRepository.GetActiveForEmployeeAsync(
-                    employee.Id,
-                    startsAt,
-                    schedule.EndsAt,
-                    cancellationToken);
+            TimeSpan holdTtl = TimeSpan.FromMinutes(bookingOptions.HoldDurationInMinutes);
 
-            if (activeHolds.Any(hold => startsAt < hold.EndsAt && schedule.EndsAt > hold.StartsAt))
+            BookingHold hold = new()
             {
-                throw new ConflictException("The selected time is temporarily reserved by a customer.");
+                HoldToken = Guid.NewGuid(),
+                StaffUserAccountId = currentUser.UserAccountId,
+                CustomerFirstName = request.CustomerFirstName.Trim(),
+                CustomerLastName = request.CustomerLastName.Trim(),
+                EmployeeId = employeeId,
+                StartsAt = startsAt,
+                EndsAt = endsAt,
+                Services = schedule.Services,
+                Notes = string.IsNullOrWhiteSpace(request.Notes)
+                    ? null
+                    : request.Notes.Trim(),
+                ExpiresAt = DateTimeOffset.UtcNow.Add(holdTtl)
+            };
+
+            bool holdCreated = await bookingHoldRepository.TryCreateAsync(hold, holdTtl, cancellationToken);
+            if (!holdCreated)
+            {
+                throw new ConflictException("The employee is already temporarily reserved for the selected time.");
             }
 
-            Appointment[] appointments = schedule.Services
+            IReadOnlyCollection<EmployeeUnavailability> currentUnavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    employeeId,
+                    hold.StartsAt,
+                    hold.EndsAt,
+                    cancellationToken);
+
+            if (currentUnavailability.Count > 0)
+            {
+                await DeleteHoldSafelyAsync(hold);
+
+                throw new ConflictException("The selected time overlaps an employee break or leave.");
+            }
+
+            return new BookingHoldResponse(
+                hold.HoldToken,
+                new EmployeeSummaryResponse(
+                    employeeContext.Employee.Id,
+                    employeeContext.UserAccount.FirstName,
+                    employeeContext.UserAccount.LastName),
+                hold.StartsAt,
+                hold.EndsAt,
+                schedule.TotalDurationMinutes,
+                schedule.TotalPrice,
+                hold.Services
+                    .Select(service => new BookingHoldServiceResponse(
+                        service.ServiceId,
+                        service.Name,
+                        service.DurationMinutes,
+                        service.Price,
+                        service.StartsAt,
+                        service.EndsAt))
+                    .ToArray(),
+                hold.ExpiresAt);
+        }
+
+        public async Task<EmployeeBookingDetailsResponse> ConfirmStaffHoldAsync(
+            Guid holdToken,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            BookingHold hold = await GetOwnStaffHoldAsync(holdToken, cancellationToken);
+
+            await GetBookableEmployeeAsync(hold.EmployeeId, cancellationToken);
+
+            IReadOnlyCollection<EmployeeUnavailability> unavailability =
+                await employeeUnavailabilityService.GetOverlappingAsync(
+                    hold.EmployeeId,
+                    hold.StartsAt,
+                    hold.EndsAt,
+                    cancellationToken);
+
+            if (unavailability.Count > 0)
+            {
+                await DeleteHoldSafelyAsync(hold);
+
+                throw new ConflictException("The held time overlaps an employee break or leave.");
+            }
+
+            if (await bookingRepository.HasScheduledOverlapAsync(
+                    hold.EmployeeId,
+                    hold.StartsAt,
+                    hold.EndsAt,
+                    cancellationToken))
+            {
+                await DeleteHoldSafelyAsync(hold);
+
+                throw new ConflictException("The employee is already booked for the selected time.");
+            }
+
+            Appointment[] appointments = hold.Services
                 .Select(service => new Appointment
                 {
                     ServiceId = service.ServiceId,
@@ -606,25 +683,93 @@ namespace AppointmentBooking.Api.Services.Bookings
 
             Booking booking = new()
             {
-                CustomerFirstName = request.CustomerFirstName.Trim(),
-                CustomerLastName = request.CustomerLastName.Trim(),
-                EmployeeId = employee.Id,
-                StartsAt = startsAt,
-                EndsAt = schedule.EndsAt.ToUniversalTime(),
+                CustomerFirstName = hold.CustomerFirstName,
+                CustomerLastName = hold.CustomerLastName,
+                EmployeeId = hold.EmployeeId,
+                StartsAt = hold.StartsAt,
+                EndsAt = hold.EndsAt,
                 Status = BookingStatus.Scheduled,
-                Notes = string.IsNullOrWhiteSpace(request.Notes)
-                    ? null
-                    : request.Notes.Trim()
+                Notes = hold.Notes
             };
 
-            BookingCreationResult created = await bookingRepository.CreateAsync(
-                booking,
-                appointments,
-                cancellationToken);
+            BookingCreationResult created;
+
+            try
+            {
+                created = await bookingRepository.CreateAsync(
+                    booking,
+                    appointments,
+                    cancellationToken);
+            }
+            finally
+            {
+                await DeleteHoldSafelyAsync(hold);
+            }
 
             return await GetEmployeeBookingByIdAsync(
                 created.Booking.Id,
                 cancellationToken);
+        }
+
+        public async Task CancelStaffHoldAsync(Guid holdToken, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            BookingHold hold = await GetOwnStaffHoldAsync(holdToken, cancellationToken);
+
+            await bookingHoldRepository.DeleteAsync(hold, cancellationToken);
+        }
+
+        // The staff hold of another user is reported like a missing one.
+        private async Task<BookingHold> GetOwnStaffHoldAsync(Guid holdToken, CancellationToken cancellationToken)
+        {
+            BookingHold? hold = await bookingHoldRepository.GetAsync(holdToken, cancellationToken);
+
+            if (hold is null ||
+                hold.StaffUserAccountId is null ||
+                hold.StaffUserAccountId.Value != currentUser.UserAccountId)
+            {
+                throw new ConflictException("The booking hold has expired or no longer exists.");
+            }
+
+            if (hold.ExpiresAt <= DateTimeOffset.UtcNow)
+            {
+                await DeleteHoldSafelyAsync(hold);
+
+                throw new ConflictException("The booking hold has expired or no longer exists.");
+            }
+
+            return hold;
+        }
+
+        // An employee books only for themselves; an admin books for the selected employee.
+        private async Task<EmployeeBookingContext> GetStaffBookingEmployeeAsync(
+            long? employeeId,
+            CancellationToken cancellationToken)
+        {
+            if (currentUser.Role == UserRole.Employee)
+            {
+                Employee employee = await GetActiveEmployeeAsync(cancellationToken);
+
+                if (employeeId.HasValue && employeeId.Value != employee.Id)
+                {
+                    throw new UnauthorizedException("An employee can only create bookings for themselves.");
+                }
+
+                return await GetBookableEmployeeAsync(employee.Id, cancellationToken);
+            }
+
+            if (currentUser.Role == UserRole.Admin)
+            {
+                if (!employeeId.HasValue || employeeId.Value <= 0)
+                {
+                    throw new ValidationException("An employee must be selected.");
+                }
+
+                return await GetBookableEmployeeAsync(employeeId.Value, cancellationToken);
+            }
+
+            throw new UnauthorizedException("The current user is not authorized to create staff bookings.");
         }
 
         public async Task<BookingAvailabilityResponse> GetAvailabilityAsync(GetBookingAvailabilityQuery query, CancellationToken cancellationToken)
@@ -1218,6 +1363,17 @@ namespace AppointmentBooking.Api.Services.Bookings
         {
             bool cancelled = await bookingRepository.CancelAsync(bookingId, cancellationToken);
             if (!cancelled) throw new ConflictException("The booking could not be cancelled because its status changed."); 
+        }
+
+        // Early check when a slot is held, so the customer does not get as far as the confirmation.
+        private async Task EnsureActiveBookingLimitNotReachedAsync(long customerId, CancellationToken cancellationToken)
+        {
+            int activeBookings = await bookingRepository.CountActiveCustomerBookingsAsync(customerId, cancellationToken);
+
+            if (activeBookings >= bookingOptions.MaxActiveBookingsPerCustomer)
+            {
+                throw new ActiveBookingLimitReachedException(bookingOptions.MaxActiveBookingsPerCustomer);
+            }
         }
 
         private async Task<Customer> GetActiveCustomerAsync(CancellationToken cancellationToken)

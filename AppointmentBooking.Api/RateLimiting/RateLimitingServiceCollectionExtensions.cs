@@ -29,24 +29,29 @@ namespace AppointmentBooking.Api.RateLimiting
             {
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-                // Safety net for every endpoint: 120 requests per minute per client.
+                // Safety net for every endpoint: 120 requests per minute, counted per signed-in user
+                // (so people sharing a public IP - salon Wi-Fi, mobile operators - never share a counter)
+                // and per client IP for requests without a token.
                 // App start sends ~10-15 requests, so real users never get close.
                 options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                     RateLimitPartition.GetFixedWindowLimiter(
-                        ClientIpResolver.GetPartitionKey(context, clientIpHeader),
+                        GetUserPartitionKey(context, clientIpHeader),
                         _ => FixedWindow(permitLimit: 120, window: TimeSpan.FromMinutes(1))));
 
-                // Password guessing: 10 attempts per minute per client (sliding, no burst at window edges).
+                // Many different emails from one client: 30 per minute per client (sliding).
+                // Guessing the password of one account is limited per email in AttemptLimiter
+                // (5 per 15 minutes), so this limit can stay generous for shared IP addresses.
                 options.AddPolicy(RateLimitPolicies.Login, context =>
                     RateLimitPartition.GetSlidingWindowLimiter(
                         ClientIpResolver.GetPartitionKey(context, clientIpHeader),
-                        _ => SlidingWindow(permitLimit: 10, window: TimeSpan.FromMinutes(1), segments: 6)));
+                        _ => SlidingWindow(permitLimit: 30, window: TimeSpan.FromMinutes(1), segments: 6)));
 
-                // Fake accounts: 5 registrations per hour per client.
+                // Fake accounts: 20 registrations per hour per client
+                // (several customers may register over the salon Wi-Fi in the same hour).
                 options.AddPolicy(RateLimitPolicies.Register, context =>
                     RateLimitPartition.GetFixedWindowLimiter(
                         ClientIpResolver.GetPartitionKey(context, clientIpHeader),
-                        _ => FixedWindow(permitLimit: 5, window: TimeSpan.FromHours(1))));
+                        _ => FixedWindow(permitLimit: 20, window: TimeSpan.FromHours(1))));
 
                 // Token refresh: 30 per minute per client.
                 options.AddPolicy(RateLimitPolicies.Refresh, context =>
@@ -54,17 +59,20 @@ namespace AppointmentBooking.Api.RateLimiting
                         ClientIpResolver.GetPartitionKey(context, clientIpHeader),
                         _ => FixedWindow(permitLimit: 30, window: TimeSpan.FromMinutes(1))));
 
-                // Every request sends an email through Mailjet: 3 per 15 minutes per client.
+                // Every request may send an email through Mailjet: 10 per 15 minutes per client.
+                // One address gets at most 3 codes per 15 minutes (AttemptLimiter).
+                // Fixed window: the rejection carries Retry-After, so the app can show the exact wait.
                 options.AddPolicy(RateLimitPolicies.ForgotPassword, context =>
-                    RateLimitPartition.GetSlidingWindowLimiter(
+                    RateLimitPartition.GetFixedWindowLimiter(
                         ClientIpResolver.GetPartitionKey(context, clientIpHeader),
-                        _ => SlidingWindow(permitLimit: 3, window: TimeSpan.FromMinutes(15), segments: 3)));
+                        _ => FixedWindow(permitLimit: 10, window: TimeSpan.FromMinutes(15))));
 
                 // Reset code guessing: 10 per 15 minutes per client (codes also expire after 5 wrong attempts).
+                // Fixed window for an exact Retry-After, as above.
                 options.AddPolicy(RateLimitPolicies.ResetCode, context =>
-                    RateLimitPartition.GetSlidingWindowLimiter(
+                    RateLimitPartition.GetFixedWindowLimiter(
                         ClientIpResolver.GetPartitionKey(context, clientIpHeader),
-                        _ => SlidingWindow(permitLimit: 10, window: TimeSpan.FromMinutes(15), segments: 3)));
+                        _ => FixedWindow(permitLimit: 10, window: TimeSpan.FromMinutes(15))));
 
                 // Blocking free slots with holds: 20 per minute per signed-in customer.
                 options.AddPolicy(RateLimitPolicies.BookingHold, context =>
