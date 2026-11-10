@@ -269,6 +269,20 @@ app.MapControllers();
 
 app.MapHealthChecks("/health").DisableRateLimiting();
 
+// Public legal pages linked from the App Store / Play Store listings and from the app:
+// privacy policy and account deletion instructions (wwwroot/legal, plain HTML).
+string legalPagesPath = Path.Combine(app.Environment.WebRootPath, "legal");
+
+app.MapGet("/privatnost", () =>
+        Results.File(Path.Combine(legalPagesPath, "privatnost.html"), "text/html; charset=utf-8"))
+    .AllowAnonymous()
+    .ExcludeFromDescription();
+
+app.MapGet("/brisanje-naloga", () =>
+        Results.File(Path.Combine(legalPagesPath, "brisanje-naloga.html"), "text/html; charset=utf-8"))
+    .AllowAnonymous()
+    .ExcludeFromDescription();
+
 app.Run();
 
 public partial class Program
